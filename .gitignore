@@ -7,6 +7,7 @@
 .wrangler/
 .wrangler.toml
 .wrangler.json
+wrangler.toml
 
 # --- Node (如果你后来加了 npm 依赖) ---
 node_modules/
