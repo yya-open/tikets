@@ -1,0 +1,10 @@
+name = "ticket-shared-local"
+compatibility_date = "2025-12-26"
+pages_build_output_dir = "."
+[vars]
+EDIT_KEY = "huangjh"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ticket_db"
+database_id = "16747bb5-0723-4be5-b11a-7ef248c3810b"

@@ -1,0 +1,23 @@
+# --- Secrets / local env ---
+.env
+.env.*
+.dev.vars
+
+# --- Wrangler / Cloudflare local state ---
+.wrangler/
+.wrangler.toml
+.wrangler.json
+
+# --- Node (如果你后来加了 npm 依赖) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
