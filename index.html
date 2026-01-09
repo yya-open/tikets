@@ -234,33 +234,68 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.35);
+  background: rgba(0,0,0,0.45);
   display: none;
   align-items: center;
   justify-content: center;
   z-index: 10001;
   padding: 18px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
 }
 .modal-overlay.show { display: flex; }
 .modal {
   width: min(520px, 100%);
   background: #fff;
   border-radius: 16px;
-  box-shadow: 0 18px 60px rgba(0,0,0,0.28);
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.08);
   overflow: hidden;
   transform: translateY(6px) scale(.98);
   opacity: 0;
   transition: transform .18s ease, opacity .18s ease;
 }
 .modal-overlay.show .modal { transform: translateY(0) scale(1); opacity: 1; }
-.modal-header { padding: 14px 16px 8px; display: flex; align-items: center; gap: 10px; }
-.modal-title { font-weight: 800; font-size: 16px; }
-.modal-body { padding: 0 16px 14px; color: #333; font-size: 14px; line-height: 1.55; }
-.modal-footer { padding: 12px 16px 16px; display: flex; justify-content: flex-end; gap: 10px; }
-.modal-footer button { border-radius: 10px; padding: 8px 14px; }
-.modal-footer .danger { background: #ff4d4f; border-color: #ff4d4f; color: #fff; }
-.modal-footer .primary { background: #1677ff; border-color: #1677ff; color: #fff; }
+.modal-header { padding: 20px 24px 10px; display: flex; align-items: center; gap: 10px; }
+.modal-title { font-weight: 900; font-size: 18px; letter-spacing: .2px; color: #111; }
+.modal-body { padding: 0 24px 14px; color: #4b5563; font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.modal-footer { padding: 16px 24px 22px; display: flex; justify-content: flex-end; gap: 12px; }
+
+/* 仅影响通用弹窗里的按钮，避免污染其它按钮 */
+.modal-footer .m-btn{
+  height: 44px;
+  min-width: 96px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.modal-footer .m-btn.secondary{
+  background: #f3f4f6;
+  border-color: rgba(0,0,0,0.10);
+  color: #111;
+}
+.modal-footer .m-btn.secondary:hover{ filter: brightness(0.98); }
+.modal-footer .m-btn.primary{
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(22,119,255,0.22);
+}
+.modal-footer .m-btn.primary:hover{ filter: brightness(0.97); }
+.modal-footer .m-btn.danger{
+  background: #ff4d4f;
+  border-color: #ff4d4f;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(255,77,79,0.22);
+}
+.modal-footer .m-btn.danger:hover{ filter: brightness(0.97); }
+
+@media (max-width: 420px){
+  .modal-footer{ flex-direction: column-reverse; }
+  .modal-footer .m-btn{ width: 100%; }
+}
   
 
 /* Ticket form modal */
@@ -1085,11 +1120,12 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
   overlay.setAttribute("aria-hidden", "false");
   overlay.classList.add("show");
   titleEl.textContent = title;
-  bodyEl.textContent = message;
+  // 支持 \n 换行，并保证安全（避免 XSS）
+  bodyEl.innerHTML = escapeHtml(message).replace(/\n/g, "<br>");
   footerEl.innerHTML = "";
 
   const okBtn = document.createElement("button");
-  okBtn.className = variant === "danger" ? "danger" : "primary";
+  okBtn.className = `m-btn ${variant === "danger" ? "danger" : "primary"}`;
   okBtn.textContent = okText;
 
   return new Promise(resolve => {
@@ -1122,7 +1158,9 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
     footerEl.appendChild(okBtn);
     okBtn.focus({ preventScroll: true });
   });
-}function showConfirm({ title = "确认操作", message = "", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
+}
+
+function showConfirm({ title = "确认操作", message = "", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
   const overlay = document.getElementById("modalOverlay");
   const titleEl = document.getElementById("modalTitle");
   const bodyEl = document.getElementById("modalBody");
@@ -1135,14 +1173,16 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
   overlay.setAttribute("aria-hidden", "false");
   overlay.classList.add("show");
   titleEl.textContent = title;
-  bodyEl.textContent = message;
+  // 支持 \n 换行，并保证安全（避免 XSS）
+  bodyEl.innerHTML = escapeHtml(message).replace(/\n/g, "<br>");
   footerEl.innerHTML = "";
 
   const cancelBtn = document.createElement("button");
+  cancelBtn.className = "m-btn secondary";
   cancelBtn.textContent = cancelText;
 
   const okBtn = document.createElement("button");
-  okBtn.className = danger ? "danger" : "primary";
+  okBtn.className = `m-btn ${danger ? "danger" : "primary"}`;
   okBtn.textContent = confirmText;
 
   return new Promise(resolve => {
