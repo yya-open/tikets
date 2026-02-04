@@ -120,6 +120,34 @@ function normalizeAll(parsed) {
   };
 }
 
+async function getColumns(env) {
+  const { results } = await env.DB.prepare("PRAGMA table_info(tickets)").all();
+  const cols = new Set();
+  for (const r of results || []) cols.add(String(r.name));
+  return cols;
+}
+
+// Keep preview compatible with old DB schema (some deployments may miss these columns).
+async function ensureSoftDeleteColumns(env) {
+  const cols = await getColumns(env);
+  const stmts = [];
+
+  if (!cols.has("updated_at")) {
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))"));
+  }
+  if (!cols.has("is_deleted")) {
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN is_deleted INTEGER DEFAULT 0"));
+  }
+  if (!cols.has("deleted_at")) {
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN deleted_at TEXT"));
+  }
+
+  // Run sequentially; ALTER TABLE can be picky inside transactions.
+  for (const s of stmts) {
+    await s.run();
+  }
+}
+
 async function fetchExistingMap(env, ids) {
   const map = new Map();
   if (!ids.length) return map;
@@ -141,6 +169,13 @@ export async function onRequestPost({ request, env }) {
   const auth = requireEditKey(request, env);
   if (auth) return auth;
 
+  // Make preview resilient on older databases.
+  try {
+    await ensureSoftDeleteColumns(env);
+  } catch (e) {
+    return jsonResponse({ ok: false, error: `schema upgrade failed: ${String(e)}` }, { status: 500 });
+  }
+
   let payload;
   try {
     payload = await request.json();
@@ -157,7 +192,12 @@ export async function onRequestPost({ request, env }) {
   const incoming = norm.all;
   const ids = [...new Set(incoming.map((r) => r.id).filter((id) => Number.isFinite(id)))];
 
-  const existingMap = await fetchExistingMap(env, ids);
+  let existingMap;
+  try {
+    existingMap = await fetchExistingMap(env, ids);
+  } catch (e) {
+    return jsonResponse({ ok: false, error: `db query failed: ${String(e)}` }, { status: 500 });
+  }
 
   let inserts = 0;
   let updates = 0;
