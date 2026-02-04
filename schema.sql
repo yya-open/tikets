@@ -7,5 +7,13 @@ CREATE TABLE IF NOT EXISTS tickets (
   solution TEXT,
   remarks TEXT,
   type TEXT,
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  -- v2: recycle bin (soft delete)
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT
 );
+
+-- Helpful indexes for pagination & filtering
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_date_id ON tickets(is_deleted, date, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_deletedat_id ON tickets(is_deleted, deleted_at, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);

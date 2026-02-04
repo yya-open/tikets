@@ -1069,6 +1069,13 @@ const PAGE_SIZE_MAX = 100;
 let pageSize = 100;     // 可选更小，但上限 100
 let currentPage = 1;
 
+// ===== 服务端分页（大数据量） =====
+let serverTotal = 0;          // 当前筛选下的总条数（用于分页 UI）
+let metaMonthCounts = {};     // 用于年份/月份按钮的“全量月份分布”（不受筛选影响，仅区分工单/回收站）
+let metaTotalAll = 0;         // 当前模式（工单/回收站）的总条数（不受筛选影响）
+let lastStatsKey = "";
+let cachedStats = null;
+
 function clamp(num, min, max) {
   return Math.max(min, Math.min(max, num));
 }
@@ -1269,27 +1276,125 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       }
     }
 
-    // ===== 云端存储（Cloudflare Pages Functions + D1）=====
-    async function loadFromServer() {
-      const url = viewMode === "trash" ? "/api/tickets?trash=1" : "/api/tickets";
-      const res = await authedFetch(url, { cache: "no-store" });
+    // ===== 云端存储（Cloudflare Pages Functions + D1，服务端分页/筛选）=====
+    function monthLastDay(year, month) {
+      // month: 1-12
+      const y = Number(year);
+      const m = Number(month);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return 31;
+      // JS: day 0 of next month = last day of current month
+      return new Date(y, m, 0).getDate();
+    }
+
+    function maxDate(a, b) {
+      if (!a) return b || "";
+      if (!b) return a || "";
+      return a >= b ? a : b; // YYYY-MM-DD lexicographic works
+    }
+
+    function minDate(a, b) {
+      if (!a) return b || "";
+      if (!b) return a || "";
+      return a <= b ? a : b;
+    }
+
+    function buildFilters({ includeYearMonth = true } = {}) {
+      const sp = new URLSearchParams();
+      if (viewMode === "trash") sp.set("trash", "1");
+
+      // 年/月视图 -> 转成日期范围
+      let rangeFrom = "";
+      let rangeTo = "";
+      if (includeYearMonth && activeYear) {
+        if (activeMonth) {
+          const last = String(monthLastDay(activeYear, Number(activeMonth))).padStart(2, "0");
+          rangeFrom = `${activeYear}-${activeMonth}-01`;
+          rangeTo = `${activeYear}-${activeMonth}-${last}`;
+        } else {
+          rangeFrom = `${activeYear}-01-01`;
+          rangeTo = `${activeYear}-12-31`;
+        }
+      }
+
+      const fromInput = (document.getElementById("filterFrom")?.value || "").trim();
+      const toInput = (document.getElementById("filterTo")?.value || "").trim();
+      const type = (document.getElementById("filterType")?.value || "").trim();
+      const q = (document.getElementById("filterKeyword")?.value || "").trim();
+
+      const from = maxDate(rangeFrom, fromInput);
+      const to = minDate(rangeTo, toInput);
+
+      if (from) sp.set("from", from);
+      if (to) sp.set("to", to);
+      if (type) sp.set("type", type);
+      if (q) sp.set("q", q);
+      return sp;
+    }
+
+    function buildStatsKey() {
+      // stats 不包含分页参数
+      return buildFilters({ includeYearMonth: true }).toString();
+    }
+
+    async function loadMetaFromServer() {
+      // 仅用于：年/月可用性与总量展示（不受筛选影响）
+      const sp = new URLSearchParams();
+      if (viewMode === "trash") sp.set("trash", "1");
+      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`meta stats failed: ${res.status}`);
+      const j = await res.json();
+      metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
+      metaTotalAll = Number(j?.total_all ?? 0) || 0;
+    }
+
+    async function loadPageFromServer() {
+      const sp = buildFilters({ includeYearMonth: true });
+      sp.set("page", String(currentPage));
+      sp.set("pageSize", String(pageSize));
+
+      const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
-      const data = await res.json();
-      records = normalizeRecords(Array.isArray(data) ? data : []);
-      const maxId = records.reduce((max, r) => {
-        const v = Number(r.id);
-        return Number.isFinite(v) ? Math.max(max, v) : max;
-      }, 0);
-      nextId = maxId + 1;
+      const j = await res.json();
+
+      const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
+      records = normalizeRecords(arr);
+      serverTotal = Number(j?.total ?? records.length) || 0;
+
+      // 兼容后端回传 page/pageSize
+      const p = Number(j?.page);
+      const ps = Number(j?.pageSize);
+      if (Number.isFinite(ps) && ps > 0) pageSize = Math.min(ps, PAGE_SIZE_MAX);
+      if (Number.isFinite(p) && p > 0) currentPage = p;
+    }
+
+    async function loadStatsFromServer() {
+      const key = buildStatsKey();
+      if (key && key === lastStatsKey && cachedStats) return cachedStats;
+      lastStatsKey = key;
+
+      const sp = buildFilters({ includeYearMonth: true });
+      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`stats failed: ${res.status}`);
+      cachedStats = await res.json();
+      return cachedStats;
     }
 
     async function reloadAndRender({ showLoadedToast = false } = {}) {
-      await loadFromServer();
-      saveToLocal(); // 缓存一份到本地，作为兜底
+      // 1) meta（用于年份/月按钮）
+      try {
+        await loadMetaFromServer();
+      } catch (e) {
+        console.warn("loadMetaFromServer failed:", e);
+        // meta 失败不阻断主流程
+        metaMonthCounts = {};
+        metaTotalAll = 0;
+      }
+
       refreshYearOptions();
-      renderTable();
+      await renderTable({ resetPage: true });
+
       if (showLoadedToast) {
-        showToast(`已从云端加载 ${records.length} 条工单`, "success");
+        showToast(`已从云端加载（当前筛选）共 ${serverTotal} 条`, "success");
       }
     }
 
@@ -1504,55 +1609,25 @@ async function hardDeleteRecord(id) {
       document.getElementById("filterType").value = "";
       document.getElementById("filterKeyword").value = "";
       // 保留月份视图状态，仅清空高级筛选
-      renderTable();
+      renderTable({ resetPage: true });
 }
 
-    function getFilteredRecords() {
-      const from = document.getElementById("filterFrom").value;
-      const to = document.getElementById("filterTo").value;
-      const type = document.getElementById("filterType").value;
-      const keyword = document.getElementById("filterKeyword").value.trim().toLowerCase();
-
-      return records.filter(r => {
-        if (activeYear && r.date.slice(0, 4) !== activeYear) return false;
-        if (activeMonth && r.date.slice(5, 7) !== activeMonth) return false;
-        if (from && r.date < from) return false;
-        if (to && r.date > to) return false;
-        if (type && r.type !== type) return false;
-        if (keyword) {
-          const combined = `${r.issue} ${r.department} ${r.name} ${r.solution} ${r.remarks}`.toLowerCase();
-          if (!combined.includes(keyword)) return false;
-        }
-        return true;
-      });
-    }
-
-    
-function renderTable({ resetPage = true } = {}) {
+async function renderTable({ resetPage = true } = {}) {
   const tbody = document.getElementById("recordTable").querySelector("tbody");
   tbody.innerHTML = "";
 
-  // 按日期升序（日期早的在上面）。
-  // 备注：date 采用 YYYY-MM-DD 字符串，按字典序即可保证时间顺序。
-  const filtered = getFilteredRecords().slice().sort((a, b) => {
-    const da = (a && a.date) ? a.date : "";
-    const db = (b && b.date) ? b.date : "";
-    if (da !== db) return da.localeCompare(db);
-    // 同一天内保持稳定：优先按 id
-    const ia = (a && typeof a.id === "number") ? a.id : Number(a?.id || 0);
-    const ib = (b && typeof b.id === "number") ? b.id : Number(b?.id || 0);
-    return (ia || 0) - (ib || 0);
-  });
+  try {
+    if (resetPage) currentPage = 1;
+    await loadPageFromServer();
+  } catch (e) {
+    console.error(e);
+    showToast("加载失败：请检查网络或后端是否正常。", "error");
+    records = [];
+    serverTotal = 0;
+  }
 
-  // 分页计算
-  const totalItems = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  if (resetPage) currentPage = 1;
-  currentPage = clamp(currentPage, 1, totalPages);
-
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const pageRecords = filtered.slice(startIndex, endIndex);
+  const totalItems = serverTotal;
+  const pageRecords = records;
 
   if (pageRecords.length === 0) {
     const row = tbody.insertRow();
@@ -1604,7 +1679,14 @@ function renderTable({ resetPage = true } = {}) {
     });
   }
 
-  updateStatsAndCharts(filtered); // 统计/图表基于“当前视图（全部筛选结果）”
+  // 统计/图表：基于服务端“当前视图（全部筛选结果）”
+  try {
+    const stats = await loadStatsFromServer();
+    updateStatsAndChartsFromStats(stats);
+  } catch (e) {
+    console.warn(e);
+  }
+
   refreshMonthButtons();
   renderPagination(totalItems);
 }
@@ -1730,7 +1812,13 @@ function renderPagination(totalItems) {
     function refreshYearOptions() {
       const yearSelect = document.getElementById("yearSelect");
       const oldValue = activeYear;
-      const years = Array.from(new Set(records.map(r => r.date.slice(0, 4)))).sort();
+      const years = Array.from(
+        new Set(
+          Object.keys(metaMonthCounts || {})
+            .map(k => String(k).slice(0, 4))
+            .filter(Boolean)
+        )
+      ).sort();
       yearSelect.innerHTML = '<option value="">全部年份</option>';
       years.forEach(y => {
         const opt = document.createElement("option");
@@ -1755,12 +1843,11 @@ function renderPagination(totalItems) {
 
       const year = activeYear;
       const monthsHasData = {};
-      records.forEach(r => {
-        const y = r.date.slice(0, 4);
-        const m = r.date.slice(5, 7);
-        if (!year || y === year) {
-          monthsHasData[m] = true;
-        }
+      Object.keys(metaMonthCounts || {}).forEach(key => {
+        const y = String(key).slice(0, 4);
+        const m = String(key).slice(5, 7);
+        if (!m) return;
+        if (!year || y === year) monthsHasData[m] = true;
       });
 
       // 若当前月份在该年份下无数据，则自动回到“全部月份”
@@ -1823,20 +1910,12 @@ function renderPagination(totalItems) {
       renderTable();
     }
 
-    function updateStatsAndCharts(filtered) {
-      const totalAll = records.length;
-      const totalFiltered = filtered.length;
+    function updateStatsAndChartsFromStats(stats) {
+      const totalAll = Number(stats?.total_all ?? metaTotalAll ?? 0) || 0;
+      const totalFiltered = Number(stats?.total_filtered ?? serverTotal ?? 0) || 0;
 
-      const countsByType = {};
-      const countsByMonth = {}; // yyyy-MM
-
-      filtered.forEach(r => {
-        const t = (r.type && String(r.type).trim()) ? String(r.type).trim() : "未分类";
-        countsByType[t] = (countsByType[t] || 0) + 1;
-
-        const monthKey = (r.date && String(r.date).length >= 7) ? String(r.date).slice(0, 7) : "未知月份";
-        countsByMonth[monthKey] = (countsByMonth[monthKey] || 0) + 1;
-      });
+      const countsByType = (stats && stats.type_counts) ? stats.type_counts : {};
+      const countsByMonth = (stats && stats.month_counts) ? stats.month_counts : {};
 
       // ===== 概览卡片 =====
       const typeKinds = Object.keys(countsByType).length;
@@ -1852,9 +1931,9 @@ function renderPagination(totalItems) {
             <div class="sub">已应用筛选 + 年/月视图</div>
           </div>
           <div class="stat">
-            <div class="label">全部工单数</div>
+            <div class="label">全部记录数</div>
             <div class="value">${totalAll}</div>
-            <div class="sub">本地存储/当前数据</div>
+            <div class="sub">当前模式总量（${viewMode === "trash" ? "回收站" : "工单"}）</div>
           </div>
           <div class="stat">
             <div class="label">类型数量</div>
@@ -1908,7 +1987,7 @@ function renderPagination(totalItems) {
 
       // ===== 饼图（类型分布）=====
       const pieLabels = Object.keys(countsByType);
-      const pieData = pieLabels.map(l => countsByType[l]);
+      const pieData = pieLabels.map(l => Number(countsByType[l]) || 0);
       const pieColors = genColors(pieLabels.length);
 
       if (typePieChart) typePieChart.destroy();
@@ -1982,7 +2061,7 @@ tooltip: {
       // ===== 柱状图（按月份数量）=====
       const monthKeys = Object.keys(countsByMonth).sort();
       const barLabels = monthKeys;
-      const barData = monthKeys.map(k => countsByMonth[k]);
+      const barData = monthKeys.map(k => Number(countsByMonth[k]) || 0);
 
       if (monthBarChart) monthBarChart.destroy();
       const barCanvas = document.getElementById("monthBarChart");
@@ -2097,17 +2176,49 @@ tooltip: {
       return ws;
     }
 
-    // 导出当前筛选为单 Sheet Excel
-    function exportExcelCurrent() {
-      const filtered = getFilteredRecords();
-      if (filtered.length === 0) {
-        showToast("当前视图下没有可导出的记录！", "warning");
-        return;
+    // ====== 导出/备份：按分页把全量数据拉下来 ======
+    async function fetchAllTicketsByParams(spBase, { maxPages = 2000 } = {}) {
+      const sp = new URLSearchParams(spBase.toString());
+      const ps = Math.min(Number(sp.get("pageSize") || pageSize) || 100, PAGE_SIZE_MAX);
+      sp.set("pageSize", String(ps));
+
+      let page = 1;
+      let total = 0;
+      let all = [];
+
+      while (page <= maxPages) {
+        sp.set("page", String(page));
+        const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`export load failed: ${res.status}`);
+        const j = await res.json();
+        const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
+        if (!total) total = Number(j?.total ?? arr.length) || 0;
+
+        all = all.concat(arr);
+        if (all.length >= total) break;
+        if (arr.length === 0) break;
+        page += 1;
       }
-      const data = [["日期", "问题", "部门", "姓名", "处理方法", "备注", "类型" ]];
-      filtered.forEach(r => {
-        data.push([r.date, r.issue, r.department, r.name, r.solution, r.remarks, r.type]);
-      });
+
+      return normalizeRecords(all);
+    }
+
+    // 导出当前筛选为单 Sheet Excel
+    async function exportExcelCurrent() {
+      try {
+        showToast("正在导出当前筛选...", "info");
+        const sp = buildFilters({ includeYearMonth: true });
+        sp.set("pageSize", String(PAGE_SIZE_MAX));
+        const filtered = await fetchAllTicketsByParams(sp);
+        if (filtered.length === 0) {
+          showToast("当前视图下没有可导出的记录！", "warning");
+          return;
+        }
+
+        const data = [["日期", "问题", "部门", "姓名", "处理方法", "备注", "类型" ]];
+        filtered.forEach(r => {
+          data.push([r.date, r.issue, r.department, r.name, r.solution, r.remarks, r.type]);
+        });
       const ws = XLSX.utils.aoa_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "工单记录");
@@ -2116,17 +2227,29 @@ tooltip: {
       const wsStats = buildTypeStatsSheet(filtered, "工单记录");
       XLSX.utils.book_append_sheet(wb, wsStats, "类型统计");
 
-      XLSX.writeFile(wb, "工单记录_当前视图.xlsx");
+        XLSX.writeFile(wb, "工单记录_当前视图.xlsx");
+        showToast("导出成功！", "success");
+      } catch (e) {
+        console.error(e);
+        showToast("导出失败：请检查网络或后端是否正常。", "error");
+      }
     }
 
     // 按月份分 Sheet 导出 Excel（基于全部 records，按 yyyy-MM 分页）
-    function exportExcelByMonth() {
-      if (records.length === 0) {
-        showToast("没有可导出的数据！", "warning");
-        return;
-      }
+    async function exportExcelByMonth() {
+      try {
+        showToast("正在导出全量数据（按月份分 Sheet）...", "info");
+        // 按“工单”全量导出（不区分你当前是否在回收站视图）
+        const sp = new URLSearchParams();
+        sp.set("pageSize", String(PAGE_SIZE_MAX));
+        const allActive = await fetchAllTicketsByParams(sp);
+        if (allActive.length === 0) {
+          showToast("没有可导出的数据！", "warning");
+          return;
+        }
+
       const grouped = {};
-      records.forEach(r => {
+      allActive.forEach(r => {
         const monthKey = r.date.slice(0, 7); // yyyy-MM
         if (!grouped[monthKey]) grouped[monthKey] = [];
         grouped[monthKey].push(r);
@@ -2143,32 +2266,33 @@ tooltip: {
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
       });
       
-      // 追加：故障类型统计（全量 records）
-      const wsStats = buildTypeStatsSheet(records);
+      // 追加：故障类型统计（全量 active）
+      const wsStats = buildTypeStatsSheet(allActive);
       XLSX.utils.book_append_sheet(wb, wsStats, "类型统计");
 
       XLSX.writeFile(wb, "工单记录_按月份多Sheet.xlsx");
+      showToast("导出成功！", "success");
+      } catch (e) {
+        console.error(e);
+        showToast("导出失败：请检查网络或后端是否正常。", "error");
+      }
     }
 
     // 导出 JSON 备份（包含：工单 + 回收站）
     async function backupData() {
       try {
+        showToast("正在导出备份（含回收站）...", "info");
+        const spActive = new URLSearchParams();
+        spActive.set("pageSize", String(PAGE_SIZE_MAX));
+        const spTrash = new URLSearchParams();
+        spTrash.set("trash", "1");
+        spTrash.set("pageSize", String(PAGE_SIZE_MAX));
+
         // GET 不需要口令
-        const [resActive, resTrash] = await Promise.all([
-          fetch("/api/tickets", { cache: "no-store" }),
-          fetch("/api/tickets?trash=1", { cache: "no-store" }),
+        const [active, trash] = await Promise.all([
+          fetchAllTicketsByParams(spActive),
+          fetchAllTicketsByParams(spTrash).catch(() => []),
         ]);
-
-        if (!resActive.ok) throw new Error(`active backup failed: ${resActive.status}`);
-        // 回收站接口在未迁移 schema 时可能不存在 -> 允许为空
-        const activeJson = await resActive.json();
-        const active = Array.isArray(activeJson) ? activeJson : [];
-
-        let trash = [];
-        if (resTrash.ok) {
-          const t = await resTrash.json();
-          trash = Array.isArray(t) ? t : [];
-        }
 
         const payload = {
           exported_at: new Date().toISOString(),
