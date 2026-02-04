@@ -136,6 +136,22 @@ function normalizeTextParam(raw) {
   return String(raw ?? "").trim();
 }
 
+
+function buildFtsQuery(q) {
+  // Build a conservative FTS MATCH query:
+  // split by whitespace, quote each token, AND them together.
+  const tokens = String(q || "")
+    .trim()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 12); // limit terms
+  if (!tokens.length) return "";
+  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
+  return quoted.join(" AND ");
+}
+
+
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
@@ -176,7 +192,19 @@ export async function onRequestGet({ request, env }) {
     binds.push(type);
   }
 
-  if (q) {
+  // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
+  const ftsQuery = q ? buildFtsQuery(q) : "";
+  const wantFts = Boolean(ftsQuery);
+
+  let fromSql = "FROM tickets";
+  let selectSql = "SELECT tickets.*";
+  if (wantFts) {
+    // Join FTS table (rowid maps to tickets.id).
+    fromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
+    where.push("tickets_fts MATCH ?");
+    binds.push(ftsQuery);
+  } else if (q) {
+    // Fallback: LIKE (kept for compatibility and non-tokenized languages).
     const like = `%${q}%`;
     where.push(`(
       issue LIKE ? OR
@@ -190,7 +218,7 @@ export async function onRequestGet({ request, env }) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const sortCol = trash ? "deleted_at" : "date";
+  const sortCol = trash ? "tickets.deleted_at" : "tickets.date";
 
   // Keyset pagination: if cursor exists, we add an extra WHERE clause and avoid OFFSET.
   const cursorWhere = [];
@@ -201,11 +229,11 @@ export async function onRequestGet({ request, env }) {
 
   if (cursor) {
     if (direction === "next") {
-      cursorWhere.push(`(${sortCol} > ? OR (${sortCol} = ? AND id > ?))`);
+      cursorWhere.push(`(${sortCol} > ? OR (${sortCol} = ? AND tickets.id > ?))`);
       cursorBinds.push(cursor.v, cursor.v, cursor.id);
       // keep ASC order
     } else {
-      cursorWhere.push(`(${sortCol} < ? OR (${sortCol} = ? AND id < ?))`);
+      cursorWhere.push(`(${sortCol} < ? OR (${sortCol} = ? AND tickets.id < ?))`);
       cursorBinds.push(cursor.v, cursor.v, cursor.id);
       // fetch previous page in DESC order then reverse in memory
       orderSql = trash
@@ -219,10 +247,9 @@ export async function onRequestGet({ request, env }) {
     : whereSql;
 
   const listSql = cursor
-    ? `SELECT * FROM tickets ${whereSqlWithCursor} ${orderSql} LIMIT ?`
-    : `SELECT * FROM tickets ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  const countSql = `SELECT COUNT(*) as total FROM tickets ${whereSql}`;
-
+    ? `${selectSql} ${fromSql} ${whereSqlWithCursor} ${orderSql} LIMIT ?`
+    : `${selectSql} ${fromSql} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
+  const countSql = `SELECT COUNT(*) as total ${fromSql} ${whereSql}`;
   try {
     const countRow = await env.DB.prepare(countSql).bind(...binds).first();
     const total = Number(countRow?.total ?? 0) || 0;
@@ -238,8 +265,9 @@ export async function onRequestGet({ request, env }) {
 
     const first = rows.length ? rows[0] : null;
     const last = rows.length ? rows[rows.length - 1] : null;
-    const prev_cursor = first ? encodeCursor({ v: first[sortCol], id: first.id }) : null;
-    const next_cursor = last ? encodeCursor({ v: last[sortCol], id: last.id }) : null;
+    const cursorKey = trash ? "deleted_at" : "date";
+    const prev_cursor = first ? encodeCursor({ v: first[cursorKey], id: first.id }) : null;
+    const next_cursor = last ? encodeCursor({ v: last[cursorKey], id: last.id }) : null;
 
     return await respondCachedJson(
       request,
@@ -247,6 +275,71 @@ export async function onRequestGet({ request, env }) {
       { maxAge: 30 }
     );
   } catch (e) {
+    const msg = String(e?.message || e);
+    // If FTS table is missing or MATCH fails, fallback to LIKE but keep the new schema.
+    if (msg.includes('no such table: tickets_fts') || msg.includes('no such module: fts5') || msg.includes('unable to use function MATCH')) {
+      // Re-run query with LIKE (no JOIN) under the new schema.
+      const whereLike = [];
+      const bindsLike = [];
+      whereLike.push('is_deleted=?');
+      bindsLike.push(trash ? 1 : 0);
+      if (from) { whereLike.push('date >= ?'); bindsLike.push(from); }
+      if (to) { whereLike.push('date <= ?'); bindsLike.push(to); }
+      if (type) { whereLike.push('type = ?'); bindsLike.push(type); }
+      if (q) {
+        const like = `%${q}%`;
+        whereLike.push(`(
+          issue LIKE ? OR
+          department LIKE ? OR
+          name LIKE ? OR
+          solution LIKE ? OR
+          remarks LIKE ? OR
+          type LIKE ?
+        )`);
+        bindsLike.push(like, like, like, like, like, like);
+      }
+      const whereLikeSql = whereLike.length ? `WHERE ${whereLike.join(' AND ')}` : '';
+      const sortCol2 = trash ? 'deleted_at' : 'date';
+      // Keyset cursor logic reused (no JOIN)
+      const cursorWhere2 = [];
+      const cursorBinds2 = [];
+      let orderSql2 = trash ? 'ORDER BY deleted_at ASC, id ASC' : 'ORDER BY date ASC, id ASC';
+      if (cursor) {
+        if (direction === 'next') {
+          cursorWhere2.push(`(${sortCol2} > ? OR (${sortCol2} = ? AND id > ?))`);
+          cursorBinds2.push(cursor.v, cursor.v, cursor.id);
+        } else {
+          cursorWhere2.push(`(${sortCol2} < ? OR (${sortCol2} = ? AND id < ?))`);
+          cursorBinds2.push(cursor.v, cursor.v, cursor.id);
+          orderSql2 = trash ? 'ORDER BY deleted_at DESC, id DESC' : 'ORDER BY date DESC, id DESC';
+        }
+      }
+      const whereLikeSqlWithCursor = cursorWhere2.length
+        ? (whereLikeSql ? `${whereLikeSql} AND ${cursorWhere2.join(' AND ')}` : `WHERE ${cursorWhere2.join(' AND ')}`)
+        : whereLikeSql;
+      const listLikeSql = cursor
+        ? `SELECT * FROM tickets ${whereLikeSqlWithCursor} ${orderSql2} LIMIT ?`
+        : `SELECT * FROM tickets ${whereLikeSql} ${orderSql2} LIMIT ? OFFSET ?`;
+      const countLikeSql = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
+      const countRowLike = await env.DB.prepare(countLikeSql).bind(...bindsLike).first();
+      const totalLike = Number(countRowLike?.total ?? 0) || 0;
+      const stmtLike = env.DB.prepare(listLikeSql);
+      const boundLike = cursor
+        ? stmtLike.bind(...bindsLike, ...cursorBinds2, pageSize)
+        : stmtLike.bind(...bindsLike, pageSize, offset);
+      const { results: resLike } = await boundLike.all();
+      const rowsLike = Array.isArray(resLike) ? (direction === 'prev' && cursor ? resLike.slice().reverse() : resLike) : [];
+      const firstLike = rowsLike.length ? rowsLike[0] : null;
+      const lastLike = rowsLike.length ? rowsLike[rowsLike.length - 1] : null;
+      const prev_cursorLike = firstLike ? encodeCursor({ v: firstLike[sortCol2], id: firstLike.id }) : null;
+      const next_cursorLike = lastLike ? encodeCursor({ v: lastLike[sortCol2], id: lastLike.id }) : null;
+      return await respondCachedJson(
+        request,
+        { data: rowsLike, page, pageSize, total: totalLike, next_cursor: next_cursorLike, prev_cursor: prev_cursorLike },
+        { maxAge: 30 }
+      );
+    }
+
     // Backward compatible fallback (old schema without is_deleted/deleted_at)
     const where2 = [];
     const binds2 = [];
@@ -263,18 +356,30 @@ export async function onRequestGet({ request, env }) {
       where2.push("type = ?");
       binds2.push(type);
     }
-    if (q) {
-      const like = `%${q}%`;
-      where2.push(`(
-        issue LIKE ? OR
-        department LIKE ? OR
-        name LIKE ? OR
-        solution LIKE ? OR
-        remarks LIKE ? OR
-        type LIKE ?
-      )`);
-      binds2.push(like, like, like, like, like, like);
-    }
+  // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
+  const ftsQuery = q ? buildFtsQuery(q) : "";
+  const wantFts = Boolean(ftsQuery);
+
+  let fromSql = "FROM tickets";
+  let selectSql = "SELECT tickets.*";
+  if (wantFts) {
+    // Join FTS table (rowid maps to tickets.id).
+    fromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
+    where.push("tickets_fts MATCH ?");
+    binds.push(ftsQuery);
+  } else if (q) {
+    // Fallback: LIKE (kept for compatibility and non-tokenized languages).
+    const like = `%${q}%`;
+    where.push(`(
+      issue LIKE ? OR
+      department LIKE ? OR
+      name LIKE ? OR
+      solution LIKE ? OR
+      remarks LIKE ? OR
+      type LIKE ?
+    )`);
+    binds.push(like, like, like, like, like, like);
+  }
 
     const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
     // Old schema fallback: no trash/cursor. We keep OFFSET mode; keyset not guaranteed.

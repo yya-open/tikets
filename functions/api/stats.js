@@ -71,6 +71,20 @@ function normalizeTextParam(raw) {
   return String(raw ?? "").trim();
 }
 
+
+function buildFtsQuery(q) {
+  const tokens = String(q || "")
+    .trim()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!tokens.length) return "";
+  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
+  return quoted.join(" AND ");
+}
+
+
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
@@ -101,7 +115,14 @@ export async function onRequestGet({ request, env }) {
     where.push("type = ?");
     binds.push(type);
   }
-  if (q) {
+  const ftsQuery = q ? buildFtsQuery(q) : "";
+  const wantFts = Boolean(ftsQuery);
+  let filteredFromSql = "FROM tickets";
+  if (wantFts) {
+    filteredFromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
+    where.push("tickets_fts MATCH ?");
+    binds.push(ftsQuery);
+  } else if (q) {
     const like = `%${q}%`;
     where.push(`(
       issue LIKE ? OR
@@ -118,11 +139,11 @@ export async function onRequestGet({ request, env }) {
   const whereSql = `WHERE ${where.join(" AND ")}`;
 
   const countAllSql = `SELECT COUNT(*) as total FROM tickets ${baseWhereSql}`;
-  const countFilteredSql = `SELECT COUNT(*) as total FROM tickets ${whereSql}`;
+  const countFilteredSql = `SELECT COUNT(*) as total ${filteredFromSql} ${whereSql}`;
 
   const typeSql = `
     SELECT COALESCE(NULLIF(TRIM(type),''),'未分类') as k, COUNT(*) as c
-    FROM tickets
+    ${filteredFromSql}
     ${whereSql}
     GROUP BY k
     ORDER BY c DESC, k ASC
@@ -130,7 +151,7 @@ export async function onRequestGet({ request, env }) {
 
   const monthSql = `
     SELECT substr(date,1,7) as k, COUNT(*) as c
-    FROM tickets
+    ${filteredFromSql}
     ${whereSql}
     GROUP BY k
     ORDER BY k ASC
@@ -169,6 +190,55 @@ export async function onRequestGet({ request, env }) {
       { maxAge: 60 }
     );
   } catch (e) {
+    const msg = String(e?.message || e);
+    if (msg.includes('no such table: tickets_fts') || msg.includes('no such module: fts5') || msg.includes('unable to use function MATCH')) {
+      // FTS not available: rerun under new schema with LIKE.
+      const whereLike = ['is_deleted=?'];
+      const bindsLike = [trash ? 1 : 0];
+      if (from) { whereLike.push('date >= ?'); bindsLike.push(from); }
+      if (to) { whereLike.push('date <= ?'); bindsLike.push(to); }
+      if (type) { whereLike.push('type = ?'); bindsLike.push(type); }
+      if (q) {
+        const like = `%${q}%`;
+        whereLike.push(`(
+          issue LIKE ? OR
+          department LIKE ? OR
+          name LIKE ? OR
+          solution LIKE ? OR
+          remarks LIKE ? OR
+          type LIKE ?
+        )`);
+        bindsLike.push(like, like, like, like, like, like);
+      }
+      const whereLikeSql = `WHERE ${whereLike.join(' AND ')}`;
+      const countFilteredSqlLike = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
+      const typeSqlLike = `
+        SELECT COALESCE(NULLIF(TRIM(type),''),'未分类') as k, COUNT(*) as c
+        FROM tickets
+        ${whereLikeSql}
+        GROUP BY k
+        ORDER BY c DESC, k ASC
+      `;
+      const monthSqlLike = `
+        SELECT substr(date,1,7) as k, COUNT(*) as c
+        FROM tickets
+        ${whereLikeSql}
+        GROUP BY k
+        ORDER BY k ASC
+      `;
+      const allRow = await env.DB.prepare(countAllSql).bind(...baseBinds).first();
+      const filteredRow = await env.DB.prepare(countFilteredSqlLike).bind(...bindsLike).first();
+      const total_all = Number(allRow?.total ?? 0) || 0;
+      const total_filtered = Number(filteredRow?.total ?? 0) || 0;
+      const typeRes = await env.DB.prepare(typeSqlLike).bind(...bindsLike).all();
+      const monthRes = await env.DB.prepare(monthSqlLike).bind(...bindsLike).all();
+      const type_counts = {};
+      for (const r of (typeRes?.results ?? [])) { type_counts[String(r.k)] = Number(r.c) || 0; }
+      const month_counts = {};
+      for (const r of (monthRes?.results ?? [])) { if (!r.k) continue; month_counts[String(r.k)] = Number(r.c) || 0; }
+      return await respondCachedJson(request, { trash: trash ? 1 : 0, total_all, total_filtered, type_counts, month_counts }, { maxAge: 60 });
+    }
+
     // old schema fallback (no is_deleted)
     const baseWhere2 = [];
     const baseBinds2 = [];
@@ -188,18 +258,25 @@ export async function onRequestGet({ request, env }) {
       where2.push("type = ?");
       binds2.push(type);
     }
-    if (q) {
-      const like = `%${q}%`;
-      where2.push(`(
-        issue LIKE ? OR
-        department LIKE ? OR
-        name LIKE ? OR
-        solution LIKE ? OR
-        remarks LIKE ? OR
-        type LIKE ?
-      )`);
-      binds2.push(like, like, like, like, like, like);
-    }
+  const ftsQuery = q ? buildFtsQuery(q) : "";
+  const wantFts = Boolean(ftsQuery);
+  let filteredFromSql = "FROM tickets";
+  if (wantFts) {
+    filteredFromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
+    where.push("tickets_fts MATCH ?");
+    binds.push(ftsQuery);
+  } else if (q) {
+    const like = `%${q}%`;
+    where.push(`(
+      issue LIKE ? OR
+      department LIKE ? OR
+      name LIKE ? OR
+      solution LIKE ? OR
+      remarks LIKE ? OR
+      type LIKE ?
+    )`);
+    binds.push(like, like, like, like, like, like);
+  }
 
     const baseWhereSql2 = baseWhere2.length ? `WHERE ${baseWhere2.join(" AND ")}` : "";
     const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
