@@ -238,7 +238,7 @@
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 10060;
   padding: 18px;
   backdrop-filter: blur(10px);
 }
@@ -1468,25 +1468,23 @@ async function addOrUpdateRecord() {
         body: JSON.stringify({ ...payload, id: editingId, updated_at: editingUpdatedAt, updated_at_ts: editingUpdatedAtTs })
       });
 
-            // 冲突：别人已更新 -> 409
+      // 冲突：别人已更新 -> 409
       if (res.status === 409) {
         let info = null;
         try { info = await res.json(); } catch {}
         const latest = info && info.current ? normalizeRecord(info.current, editingId) : null;
 
-        // 先恢复按钮状态，避免用户感觉卡在“保存中…”
-        if (btn) {
-          btn.disabled = false;
-          btn.innerText = oldText || "保存修改";
-        }
+        // 409 时先解除“保存中…”状态，避免弹窗被遮挡时用户误以为卡死
+        if (btn) { btn.disabled = false; btn.innerText = oldText || "保存修改"; }
+
 
         const overwrite = await showConfirm({
           title: "编辑冲突",
-          message: `这条记录刚刚被其他人/其他窗口更新过。
+          message: `这条工单已被别的窗口/设备更新（版本号不同），为了避免覆盖对方修改，系统阻止了本次保存。
 
 你可以选择：
-- 【加载最新】：放弃本次修改，载入最新数据再编辑保存
-- 【覆盖保存】：用你当前填写的内容强制覆盖云端最新版本（谨慎）`,
+- 【加载最新】：拉取云端最新内容并回填到表单，然后你再重新编辑保存
+- 【覆盖保存】：强制用你当前表单内容覆盖云端最新（谨慎）`,
           confirmText: "覆盖保存",
           cancelText: "加载最新",
           danger: true
@@ -1494,17 +1492,16 @@ async function addOrUpdateRecord() {
 
         if (!overwrite) {
           await reloadAndRender({ showLoadedToast: false });
-          if (latest) fillFormFromRecord(latest);
+          if (latest) {
+            fillFormFromRecord(latest);
+          }
           showToast("已加载最新版本，请确认后重新编辑保存。", "info");
           return;
         }
 
-        // 覆盖保存（force）：重新进入保存中状态
-        if (btn) {
-          btn.disabled = true;
-          btn.innerText = "保存中...";
-        }
+        if (btn) { btn.disabled = true; btn.innerText = "保存中..."; }
 
+        // 覆盖保存（force）
         res = await authedFetch(`/api/tickets/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1512,7 +1509,7 @@ async function addOrUpdateRecord() {
         });
       }
 
-if (!res.ok) throw new Error(`update failed: ${res.status}`);
+      if (!res.ok) throw new Error(`update failed: ${res.status}`);
 
       editingId = null;
       editingUpdatedAt = "";
