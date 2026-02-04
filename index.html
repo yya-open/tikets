@@ -1499,6 +1499,19 @@ async function addOrUpdateRecord() {
           return;
         }
 
+        // 二次确认：覆盖保存属于高风险操作（可能丢失对方刚刚保存的内容）
+        const sureOverwrite = await showConfirm({
+          title: "确认覆盖保存",
+          message: "覆盖保存会用你当前表单内容覆盖云端最新修改，可能会丢失对方刚刚保存的内容。\n\n确定继续吗？",
+          confirmText: "确定覆盖",
+          cancelText: "取消",
+          danger: true
+        });
+        if (!sureOverwrite) {
+          showToast("已取消覆盖保存。", "info");
+          return;
+        }
+
         if (btn) { btn.disabled = true; btn.innerText = "保存中..."; }
 
         // 覆盖保存（force）
