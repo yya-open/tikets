@@ -72,7 +72,18 @@ function normalizeTextParam(raw) {
 }
 
 
+const FTS_FIELDS = ["issue", "department", "name", "solution", "remarks", "type"];
+
+function escapeFtsPhrase(s) {
+  // Wrap as a phrase and escape quotes for FTS5.
+  return `"${String(s ?? "").replace(/"/g, '""')}"`;
+}
+
 function buildFtsQuery(q) {
+  // Conservative multi-field FTS query:
+  // - Split by whitespace into terms
+  // - For each term: (issue:"term" OR department:"term" OR ...)
+  // - AND terms together
   const tokens = String(q || "")
     .trim()
     .split(/\s+/)
@@ -80,9 +91,16 @@ function buildFtsQuery(q) {
     .filter(Boolean)
     .slice(0, 12);
   if (!tokens.length) return "";
-  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
-  return quoted.join(" AND ");
+
+  const perToken = tokens.map((tok) => {
+    const phrase = escapeFtsPhrase(tok);
+    const ors = FTS_FIELDS.map((f) => `${f}:${phrase}`).join(" OR ");
+    return `(${ors})`;
+  });
+
+  return perToken.join(" AND ");
 }
+
 
 
 export async function onRequestGet({ request, env }) {

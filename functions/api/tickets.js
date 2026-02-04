@@ -137,19 +137,35 @@ function normalizeTextParam(raw) {
 }
 
 
+const FTS_FIELDS = ["issue", "department", "name", "solution", "remarks", "type"];
+
+function escapeFtsPhrase(s) {
+  // Wrap as a phrase and escape quotes for FTS5.
+  return `"${String(s ?? "").replace(/"/g, '""')}"`;
+}
+
 function buildFtsQuery(q) {
-  // Build a conservative FTS MATCH query:
-  // split by whitespace, quote each token, AND them together.
+  // Conservative multi-field FTS query:
+  // - Split by whitespace into terms
+  // - For each term: (issue:"term" OR department:"term" OR ...)
+  // - AND terms together
   const tokens = String(q || "")
     .trim()
     .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean)
-    .slice(0, 12); // limit terms
+    .slice(0, 12);
   if (!tokens.length) return "";
-  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
-  return quoted.join(" AND ");
+
+  const perToken = tokens.map((tok) => {
+    const phrase = escapeFtsPhrase(tok);
+    const ors = FTS_FIELDS.map((f) => `${f}:${phrase}`).join(" OR ");
+    return `(${ors})`;
+  });
+
+  return perToken.join(" AND ");
 }
+
 
 
 export async function onRequestGet({ request, env }) {
@@ -171,6 +187,9 @@ export async function onRequestGet({ request, env }) {
 
   // LIKE keyword: keep it short to reduce abuse.
   const q = qRaw.length > 120 ? qRaw.slice(0, 120) : qRaw;
+
+  const hasKeyword = Boolean(q);
+  const useCursor = Boolean(cursor) && !hasKeyword;
 
   // Build WHERE + bind params (new schema)
   const where = [];
@@ -195,6 +214,7 @@ export async function onRequestGet({ request, env }) {
   // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
   const ftsQuery = q ? buildFtsQuery(q) : "";
   const wantFts = Boolean(ftsQuery);
+  const useRelevanceOrder = wantFts && hasKeyword;
 
   let fromSql = "FROM tickets";
   let selectSql = "SELECT tickets.*";
@@ -227,7 +247,13 @@ export async function onRequestGet({ request, env }) {
     ? "ORDER BY deleted_at ASC, id ASC"
     : "ORDER BY date ASC, id ASC";
 
-  if (cursor) {
+
+  if (useRelevanceOrder) {
+    // Relevance first, then newest updated.
+    orderSql = "ORDER BY bm25(tickets_fts) ASC, COALESCE(tickets.updated_at_ts,0) DESC, tickets.id DESC";
+  }
+
+  if (useCursor) {
     if (direction === "next") {
       cursorWhere.push(`(${sortCol} > ? OR (${sortCol} = ? AND tickets.id > ?))`);
       cursorBinds.push(cursor.v, cursor.v, cursor.id);
@@ -261,13 +287,13 @@ export async function onRequestGet({ request, env }) {
     const { results } = await bound.all();
 
     // If direction=prev we fetched in DESC order; reverse back to ASC for consistent UI.
-    const rows = Array.isArray(results) ? (direction === "prev" && cursor ? results.slice().reverse() : results) : [];
+    const rows = Array.isArray(results) ? (direction === "prev" && useCursor ? results.slice().reverse() : results) : [];
 
     const first = rows.length ? rows[0] : null;
     const last = rows.length ? rows[rows.length - 1] : null;
     const cursorKey = trash ? "deleted_at" : "date";
-    const prev_cursor = first ? encodeCursor({ v: first[cursorKey], id: first.id }) : null;
-    const next_cursor = last ? encodeCursor({ v: last[cursorKey], id: last.id }) : null;
+    const prev_cursor = useCursor && first ? encodeCursor({ v: first[cursorKey], id: first.id }) : null;
+    const next_cursor = useCursor && last ? encodeCursor({ v: last[cursorKey], id: last.id }) : null;
 
     return await respondCachedJson(
       request,
@@ -304,7 +330,7 @@ export async function onRequestGet({ request, env }) {
       const cursorWhere2 = [];
       const cursorBinds2 = [];
       let orderSql2 = trash ? 'ORDER BY deleted_at ASC, id ASC' : 'ORDER BY date ASC, id ASC';
-      if (cursor) {
+      if (useCursor) {
         if (direction === 'next') {
           cursorWhere2.push(`(${sortCol2} > ? OR (${sortCol2} = ? AND id > ?))`);
           cursorBinds2.push(cursor.v, cursor.v, cursor.id);
@@ -328,11 +354,11 @@ export async function onRequestGet({ request, env }) {
         ? stmtLike.bind(...bindsLike, ...cursorBinds2, pageSize)
         : stmtLike.bind(...bindsLike, pageSize, offset);
       const { results: resLike } = await boundLike.all();
-      const rowsLike = Array.isArray(resLike) ? (direction === 'prev' && cursor ? resLike.slice().reverse() : resLike) : [];
+      const rowsLike = Array.isArray(resLike) ? (direction === 'prev' && useCursor ? resLike.slice().reverse() : resLike) : [];
       const firstLike = rowsLike.length ? rowsLike[0] : null;
       const lastLike = rowsLike.length ? rowsLike[rowsLike.length - 1] : null;
-      const prev_cursorLike = firstLike ? encodeCursor({ v: firstLike[sortCol2], id: firstLike.id }) : null;
-      const next_cursorLike = lastLike ? encodeCursor({ v: lastLike[sortCol2], id: lastLike.id }) : null;
+      const prev_cursorLike = useCursor && firstLike ? encodeCursor({ v: firstLike[sortCol2], id: firstLike.id }) : null;
+      const next_cursorLike = useCursor && lastLike ? encodeCursor({ v: lastLike[sortCol2], id: lastLike.id }) : null;
       return await respondCachedJson(
         request,
         { data: rowsLike, page, pageSize, total: totalLike, next_cursor: next_cursorLike, prev_cursor: prev_cursorLike },
