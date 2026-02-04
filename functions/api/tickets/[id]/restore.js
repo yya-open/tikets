@@ -47,16 +47,34 @@ export async function onRequestPut({ params, request, env }) {
   if (id === null) return jsonResponse({ ok: false, error: "bad id" }, { status: 400 });
 
   try {
-    const r = await env.DB
-      .prepare(
-        `UPDATE tickets
-         SET is_deleted=0,
-             deleted_at=NULL,
-             updated_at=datetime('now')
-         WHERE id=? AND is_deleted=1`
-      )
-      .bind(id)
-      .run();
+    const nowTs = Date.now();
+
+    // Prefer schema with updated_at_ts; fall back gracefully if column missing.
+    let r;
+    try {
+      r = await env.DB
+        .prepare(
+          `UPDATE tickets
+           SET is_deleted=0,
+               deleted_at=NULL,
+               updated_at=CURRENT_TIMESTAMP,
+               updated_at_ts=?
+           WHERE id=? AND is_deleted=1`
+        )
+        .bind(nowTs, id)
+        .run();
+    } catch {
+      r = await env.DB
+        .prepare(
+          `UPDATE tickets
+           SET is_deleted=0,
+               deleted_at=NULL,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND is_deleted=1`
+        )
+        .bind(id)
+        .run();
+    }
 
     const changes = Number(r?.meta?.changes ?? 0);
     if (changes === 0) {
