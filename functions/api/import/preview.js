@@ -81,6 +81,9 @@ function normalizeRecord(r, forcedDeleted = null) {
   const id = Number.isFinite(idNum) ? idNum : null;
 
   const updatedAt = String(obj.updated_at ?? obj.updatedAt ?? "").trim();
+  const tsRaw = obj.updated_at_ts ?? obj.updatedAtTs ?? obj.updatedAtTS ?? obj.updated_atTs;
+  const tsNum = Number(tsRaw);
+  const updated_at_ts = (Number.isFinite(tsNum) && tsNum > 0) ? Math.trunc(tsNum) : parseUpdatedAtToTs(updatedAt);
   const isDeletedRaw = Number(obj.is_deleted ?? obj.isDeleted ?? obj.__is_deleted ?? 0) ? 1 : 0;
   const is_deleted = forcedDeleted === null ? isDeletedRaw : forcedDeleted;
 
@@ -97,9 +100,29 @@ function normalizeRecord(r, forcedDeleted = null) {
     remarks: String(obj.remarks ?? ""),
     type: String(obj.type ?? ""),
     updated_at: updatedAt,
+    updated_at_ts,
     is_deleted,
     deleted_at,
   };
+}
+
+
+function parseUpdatedAtToTs(updatedAt) {
+  const s = String(updatedAt || "").trim();
+  if (!s) return 0;
+
+  // ISO or RFC strings
+  const p = Date.parse(s);
+  if (Number.isFinite(p)) return p;
+
+  // SQLite format: YYYY-MM-DD HH:MM:SS (assume UTC)
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+    const hh = Number(m[4]), mm = Number(m[5]), ss = Number(m[6]);
+    return Date.UTC(y, mo, d, hh, mm, ss);
+  }
+  return 0;
 }
 
 function normalizeAll(parsed) {
@@ -135,6 +158,10 @@ async function ensureSoftDeleteColumns(env) {
   if (!cols.has("updated_at")) {
     stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"));
   }
+  if (!cols.has("updated_at_ts")) {
+    // milliseconds since epoch; default 0 for legacy rows (we'll backfill right after)
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at_ts INTEGER DEFAULT 0"));
+  }
   if (!cols.has("is_deleted")) {
     stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN is_deleted INTEGER DEFAULT 0"));
   }
@@ -146,7 +173,21 @@ async function ensureSoftDeleteColumns(env) {
   for (const s of stmts) {
     await s.run();
   }
+
+  // Backfill updated_at_ts for legacy rows if possible (based on updated_at).
+  // strftime('%s', ...) returns seconds since epoch. Multiply to ms.
+  try {
+    await env.DB.prepare(
+      `UPDATE tickets
+       SET updated_at_ts = CAST(strftime('%s', updated_at) AS INTEGER) * 1000
+       WHERE (updated_at_ts IS NULL OR updated_at_ts = 0)
+         AND updated_at IS NOT NULL AND TRIM(updated_at) <> ''`
+    ).run();
+  } catch {
+    // ignore; will just use string compare fallback
+  }
 }
+
 
 async function fetchExistingMap(env, ids) {
   const map = new Map();
@@ -158,10 +199,10 @@ async function fetchExistingMap(env, ids) {
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const placeholders = chunk.map(() => "?").join(",");
-    const sql = `SELECT id, updated_at FROM tickets WHERE id IN (${placeholders})`;
+    const sql = `SELECT id, updated_at_ts, updated_at FROM tickets WHERE id IN (${placeholders})`;
     const { results } = await env.DB.prepare(sql).bind(...chunk).all();
     for (const row of results || []) {
-      map.set(Number(row.id), String(row.updated_at ?? "").trim());
+      map.set(Number(row.id), { ts: Number(row.updated_at_ts ?? 0) || 0, s: String(row.updated_at ?? "").trim() });
     }
   }
   return map;
@@ -211,19 +252,22 @@ export async function onRequestPost({ request, env }) {
       inserts++;
       continue;
     }
-    const existingUpdatedAt = existingMap.get(r.id);
+    const existing = existingMap.get(r.id);
+    const existingTs = existing ? (Number(existing.ts) || 0) : 0;
+    const existingUpdatedAt = existing ? String(existing.s || "") : "";
     if (existingUpdatedAt === undefined) {
       inserts++;
       continue;
     }
-    const hasIncomingUpdatedAt = !!r.updated_at;
-    if (!hasIncomingUpdatedAt) {
+    const incomingTs = Number(r.updated_at_ts ?? 0) || 0;
+    const hasIncomingVersion = incomingTs > 0 || !!r.updated_at;
+    if (!hasIncomingVersion) {
       skips++;
       skipped_newer_or_equal++;
       continue;
     }
-    // Lexicographic compare works for both "YYYY-MM-DD HH:MM:SS" and ISO8601.
-    if (r.updated_at > (existingUpdatedAt || "")) {
+    // Prefer timestamp compare; fall back to lexicographic string compare.
+    if ((incomingTs > 0 && existingTs >= 0 && incomingTs > existingTs) || (incomingTs === 0 && r.updated_at > (existingUpdatedAt || ""))) {
       updates++;
     } else {
       skips++;

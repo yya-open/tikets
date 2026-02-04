@@ -95,8 +95,8 @@ export async function onRequestPut({ request, env }) {
   const insertNew = env.DB.prepare(
     `INSERT INTO tickets (
         id, date, issue, department, name, solution, remarks, type,
-        is_deleted, deleted_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        is_deleted, deleted_at, updated_at, updated_at_ts
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const insertOld = env.DB.prepare(
@@ -121,6 +121,19 @@ export async function onRequestPut({ request, env }) {
         const isDeleted = Number(r?.is_deleted ?? r?.isDeleted ?? r?.__is_deleted ?? 0) ? 1 : 0;
         const deletedAt = r?.deleted_at ?? r?.deletedAt ?? (isDeleted ? (r?.deleted_at || null) : null);
         const updatedAt = r?.updated_at ?? r?.updatedAt ?? null;
+        const tsRaw = r?.updated_at_ts ?? r?.updatedAtTs ?? r?.updatedAtTS ?? r?.updated_atTs;
+        let updatedAtTs = Number(tsRaw);
+        if (!Number.isFinite(updatedAtTs) || updatedAtTs <= 0) {
+          // Try to derive from updatedAt string (SQLite format or ISO). Fallback to now.
+          const s = String(updatedAt ?? "").trim();
+          const p = Date.parse(s);
+          if (Number.isFinite(p)) updatedAtTs = p;
+          else {
+            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+            if (m) updatedAtTs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]));
+            else updatedAtTs = Date.now();
+          }
+        }
 
         return insertNew.bind(
           safeId,
@@ -133,7 +146,8 @@ export async function onRequestPut({ request, env }) {
           String(r?.type ?? ""),
           isDeleted,
           deletedAt,
-          updatedAt
+          updatedAt,
+          updatedAtTs
         );
       });
 

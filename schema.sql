@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   remarks TEXT,
   type TEXT,
   updated_at TEXT DEFAULT (datetime('now')),
+  updated_at_ts INTEGER DEFAULT 0,
   -- v2: recycle bin (soft delete)
   is_deleted INTEGER DEFAULT 0,
   deleted_at TEXT

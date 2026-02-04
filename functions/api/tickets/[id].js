@@ -79,8 +79,14 @@ export async function onRequestPut({ params, request, env }) {
   const type = String(body?.type ?? "");
 
   const force = !!body?.force;
-  const clientUpdatedAt = String(body?.updated_at ?? body?.updatedAt ?? "");
 
+  // Prefer updated_at_ts (integer timestamp) for optimistic concurrency.
+  // Keep updated_at string for backward compatibility.
+  const clientUpdatedAtTsRaw = body?.updated_at_ts ?? body?.updatedAtTs ?? body?.updatedAtTS ?? body?.updated_atTs;
+  const clientUpdatedAtTs = Number(clientUpdatedAtTsRaw);
+  const hasClientTs = Number.isFinite(clientUpdatedAtTs) && clientUpdatedAtTs > 0;
+
+  const clientUpdatedAt = String(body?.updated_at ?? body?.updatedAt ?? "").trim();
   // Ensure exists (and not deleted)
   let current = null;
   try {
@@ -97,31 +103,48 @@ export async function onRequestPut({ params, request, env }) {
     return jsonResponse({ ok: false, error: "deleted" }, { status: 410 });
   }
 
-  // Old schema doesn't have updated_at? (should have), but keep safe.
-  const currentUpdatedAt = String(current?.updated_at ?? "");
+  // Keep safe if updated_at is missing, but prefer updated_at_ts if available.
+  const currentUpdatedAt = String(current?.updated_at ?? "").trim();
+  const currentUpdatedAtTs = Number(current?.updated_at_ts ?? 0);
+  const hasServerTs = Number.isFinite(currentUpdatedAtTs) && currentUpdatedAtTs > 0;
 
-  if (!force && !clientUpdatedAt) {
+  if (!force && !hasClientTs && !clientUpdatedAt) {
     return jsonResponse(
-      { ok: false, error: "missing_version", hint: "send updated_at for concurrency control" },
+      { ok: false, error: "missing_version", hint: "send updated_at_ts (preferred) or updated_at for concurrency control" },
       { status: 400 }
     );
   }
 
-  // Try new schema (with is_deleted + concurrency)
+  const nowTs = Date.now();
+
+  // Try new schema (with is_deleted + updated_at_ts concurrency)
   try {
-    const stmt = force
-      ? env.DB.prepare(
-          `UPDATE tickets
-           SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
-               updated_at=datetime('now')
-           WHERE id=? AND is_deleted=0`
-        ).bind(date, issue, department, name, solution, remarks, type, id)
-      : env.DB.prepare(
-          `UPDATE tickets
-           SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
-               updated_at=datetime('now')
-           WHERE id=? AND is_deleted=0 AND updated_at=?`
-        ).bind(date, issue, department, name, solution, remarks, type, id, clientUpdatedAt);
+    let stmt;
+    if (force) {
+      stmt = env.DB.prepare(
+        `UPDATE tickets
+         SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             updated_at=CURRENT_TIMESTAMP,
+             updated_at_ts=?
+         WHERE id=? AND is_deleted=0`
+      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id);
+    } else if (hasClientTs) {
+      stmt = env.DB.prepare(
+        `UPDATE tickets
+         SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             updated_at=CURRENT_TIMESTAMP,
+             updated_at_ts=?
+         WHERE id=? AND is_deleted=0 AND updated_at_ts=?`
+      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id, clientUpdatedAtTs);
+    } else {
+      stmt = env.DB.prepare(
+        `UPDATE tickets
+         SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             updated_at=CURRENT_TIMESTAMP,
+             updated_at_ts=?
+         WHERE id=? AND is_deleted=0 AND updated_at=?`
+      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id, clientUpdatedAt);
+    }
 
     const r = await stmt.run();
     const changes = Number(r?.meta?.changes ?? 0);
@@ -134,35 +157,73 @@ export async function onRequestPut({ params, request, env }) {
           error: "conflict",
           current: latest ?? current,
           client_updated_at: clientUpdatedAt,
+          client_updated_at_ts: hasClientTs ? clientUpdatedAtTs : null,
           server_updated_at: String((latest ?? current)?.updated_at ?? currentUpdatedAt),
+          server_updated_at_ts: Number((latest ?? current)?.updated_at_ts ?? currentUpdatedAtTs) || 0,
         },
         { status: 409 }
       );
     }
 
     const latest = await getTicket(env, id);
-    return jsonResponse({ ok: true, updated_at: String(latest?.updated_at ?? "") });
+    return jsonResponse({
+      ok: true,
+      updated_at: String(latest?.updated_at ?? ""),
+      updated_at_ts: Number(latest?.updated_at_ts ?? nowTs) || nowTs,
+    });
   } catch (e) {
-    // Backward compatible fallback (old schema w/o soft delete columns)
-    // Concurrency still works if updated_at exists; else it becomes best-effort.
-    const stmt = (!force && clientUpdatedAt)
-      ? env.DB.prepare(
+    // Backward compatible fallback (old schema).
+    // Concurrency prefers updated_at (string). If updated_at_ts exists, we still try to use it.
+    let stmt;
+
+    if (force) {
+      try {
+        stmt = env.DB.prepare(
           `UPDATE tickets
            SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
-               updated_at=datetime('now')
-           WHERE id=? AND updated_at=?`
-        ).bind(date, issue, department, name, solution, remarks, type, id, clientUpdatedAt)
-      : env.DB.prepare(
+               updated_at=CURRENT_TIMESTAMP,
+               updated_at_ts=?
+           WHERE id=?`
+        ).bind(date, issue, department, name, solution, remarks, type, nowTs, id);
+      } catch {
+        stmt = env.DB.prepare(
           `UPDATE tickets
            SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
-               updated_at=datetime('now')
+               updated_at=CURRENT_TIMESTAMP
            WHERE id=?`
         ).bind(date, issue, department, name, solution, remarks, type, id);
+      }
+    } else if (hasClientTs) {
+      try {
+        stmt = env.DB.prepare(
+          `UPDATE tickets
+           SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+               updated_at=CURRENT_TIMESTAMP,
+               updated_at_ts=?
+           WHERE id=? AND updated_at_ts=?`
+        ).bind(date, issue, department, name, solution, remarks, type, nowTs, id, clientUpdatedAtTs);
+      } catch {
+        // fall back to string token
+        stmt = env.DB.prepare(
+          `UPDATE tickets
+           SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND updated_at=?`
+        ).bind(date, issue, department, name, solution, remarks, type, id, clientUpdatedAt);
+      }
+    } else {
+      stmt = env.DB.prepare(
+        `UPDATE tickets
+         SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=? AND updated_at=?`
+      ).bind(date, issue, department, name, solution, remarks, type, id, clientUpdatedAt);
+    }
 
     const r = await stmt.run();
     const changes = Number(r?.meta?.changes ?? 0);
 
-    if (changes === 0 && !force && clientUpdatedAt) {
+    if (changes === 0 && !force) {
       const latest = await getTicket(env, id);
       return jsonResponse(
         {
@@ -170,16 +231,22 @@ export async function onRequestPut({ params, request, env }) {
           error: "conflict",
           current: latest ?? current,
           client_updated_at: clientUpdatedAt,
+          client_updated_at_ts: hasClientTs ? clientUpdatedAtTs : null,
           server_updated_at: String((latest ?? current)?.updated_at ?? currentUpdatedAt),
+          server_updated_at_ts: Number((latest ?? current)?.updated_at_ts ?? currentUpdatedAtTs) || 0,
         },
         { status: 409 }
       );
     }
 
     const latest = await getTicket(env, id);
-    return jsonResponse({ ok: true, updated_at: String(latest?.updated_at ?? "") });
+    return jsonResponse({
+      ok: true,
+      updated_at: String(latest?.updated_at ?? ""),
+      updated_at_ts: Number(latest?.updated_at_ts ?? nowTs) || nowTs,
+    });
   }
-}
+
 
 export async function onRequestDelete({ params, request, env }) {
   const auth = requireEditKey(request, env);
@@ -190,16 +257,34 @@ export async function onRequestDelete({ params, request, env }) {
 
   // Soft delete (new schema)
   try {
-    const r = await env.DB
-      .prepare(
-        `UPDATE tickets
-         SET is_deleted=1,
-             deleted_at=datetime('now'),
-             updated_at=datetime('now')
-         WHERE id=? AND is_deleted=0`
-      )
-      .bind(id)
-      .run();
+    const nowTs = Date.now();
+    let r;
+
+    // Prefer schema with updated_at_ts; fall back if column not present.
+    try {
+      r = await env.DB
+        .prepare(
+          `UPDATE tickets
+           SET is_deleted=1,
+               deleted_at=CURRENT_TIMESTAMP,
+               updated_at=CURRENT_TIMESTAMP,
+               updated_at_ts=?
+           WHERE id=? AND is_deleted=0`
+        )
+        .bind(nowTs, id)
+        .run();
+    } catch {
+      r = await env.DB
+        .prepare(
+          `UPDATE tickets
+           SET is_deleted=1,
+               deleted_at=CURRENT_TIMESTAMP,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND is_deleted=0`
+        )
+        .bind(id)
+        .run();
+    }
 
     const changes = Number(r?.meta?.changes ?? 0);
     if (changes === 0) {

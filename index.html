@@ -712,7 +712,8 @@
 <script>
     let records = [];
     let editingId = null;
-    let editingUpdatedAt = ""; // optimistic concurrency token from server
+    let editingUpdatedAt = ""; // legacy concurrency token from server
+    let editingUpdatedAtTs = 0; // preferred concurrency token (ms timestamp)
     let nextId = 1;
 
     // ===== Chart 插件：在饼图外显示标签（类型/数量/占比）=====
@@ -1048,6 +1049,7 @@
         remarks: obj.remarks ?? obj.remark ?? obj.备注 ?? obj.note ?? "",
         type: obj.type ?? obj.类型 ?? obj.category ?? "",
         updated_at: obj.updated_at ?? obj.updatedAt ?? "",
+        updated_at_ts: obj.updated_at_ts ?? obj.updatedAtTs ?? obj.updatedAtTS ?? 0,
         is_deleted: Number(obj.is_deleted ?? obj.isDeleted ?? 0) ? 1 : 0,
         deleted_at: obj.deleted_at ?? obj.deletedAt ?? ""
       };
@@ -1463,7 +1465,7 @@ async function addOrUpdateRecord() {
       let res = await authedFetch(`/api/tickets/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, id: editingId, updated_at: editingUpdatedAt })
+        body: JSON.stringify({ ...payload, id: editingId, updated_at: editingUpdatedAt, updated_at_ts: editingUpdatedAtTs })
       });
 
       // 冲突：别人已更新 -> 409
@@ -1506,6 +1508,7 @@ async function addOrUpdateRecord() {
 
       editingId = null;
       editingUpdatedAt = "";
+    editingUpdatedAtTs = 0;
       document.getElementById("submitBtn").innerText = "确定";
     }
 
@@ -1529,6 +1532,7 @@ function resetForm(resetEditing = true) {
   if (resetEditing) {
     editingId = null;
     editingUpdatedAt = "";
+    editingUpdatedAtTs = 0;
     document.getElementById("submitBtn").innerText = "确定";
   }
 }
@@ -1537,6 +1541,7 @@ function fillFormFromRecord(record) {
   if (!record) return;
   editingId = record.id;
   editingUpdatedAt = record.updated_at || "";
+  editingUpdatedAtTs = Number(record.updated_at_ts || 0) || 0;
   document.getElementById("date").value = record.date || "";
   document.getElementById("issue").value = record.issue || "";
   document.getElementById("department").value = record.department || "";
@@ -1552,6 +1557,8 @@ function fillFormFromRecord(record) {
       if (!record) return;
       editingId = id;
       editingUpdatedAt = record.updated_at || "";
+      editingUpdatedAtTs = Number(record.updated_at_ts || 0) || 0;
+  editingUpdatedAtTs = Number(record.updated_at_ts || 0) || 0;
       document.getElementById("date").value = record.date || "";
       document.getElementById("issue").value = record.issue || "";
       document.getElementById("department").value = record.department || "";

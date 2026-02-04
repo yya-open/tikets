@@ -71,6 +71,9 @@ function normalizeRecord(r, forceDeletedFlag) {
   const id = Number.isFinite(idNum) ? idNum : null;
 
   const updatedAt = String(obj.updated_at ?? obj.updatedAt ?? "").trim();
+  const tsRaw = obj.updated_at_ts ?? obj.updatedAtTs ?? obj.updatedAtTS ?? obj.updated_atTs;
+  const tsNum = Number(tsRaw);
+  const updated_at_ts = (Number.isFinite(tsNum) && tsNum > 0) ? Math.trunc(tsNum) : parseUpdatedAtToTs(updatedAt);
 
   const isDeleted = forceDeletedFlag != null
     ? (forceDeletedFlag ? 1 : 0)
@@ -88,7 +91,8 @@ function normalizeRecord(r, forceDeletedFlag) {
     remarks: String(obj.remarks ?? obj.remark ?? obj.备注 ?? obj.note ?? ""),
     type: String(obj.type ?? obj.类型 ?? obj.category ?? ""),
     updated_at: updatedAt,
-    has_updated_at: updatedAt.length > 0,
+    updated_at_ts,
+    has_version: (updated_at_ts > 0) || (updatedAt.length > 0),
     is_deleted: isDeleted,
     deleted_at: deletedAtRaw,
   };
@@ -105,6 +109,23 @@ function normalizeAll({ active, trash }) {
   return { active: normActive, trash: normTrash, all };
 }
 
+
+function parseUpdatedAtToTs(updatedAt) {
+  const s = String(updatedAt || "").trim();
+  if (!s) return 0;
+
+  const p = Date.parse(s);
+  if (Number.isFinite(p)) return p;
+
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+    const hh = Number(m[4]), mm = Number(m[5]), ss = Number(m[6]);
+    return Date.UTC(y, mo, d, hh, mm, ss);
+  }
+  return 0;
+}
+
 async function getColumns(env) {
   const { results } = await env.DB.prepare("PRAGMA table_info(tickets)").all();
   const cols = new Set();
@@ -119,6 +140,9 @@ async function ensureSoftDeleteColumns(env) {
   if (!cols.has("updated_at")) {
     stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"));
   }
+  if (!cols.has("updated_at_ts")) {
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at_ts INTEGER DEFAULT 0"));
+  }
   if (!cols.has("is_deleted")) {
     stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN is_deleted INTEGER DEFAULT 0"));
   }
@@ -132,6 +156,16 @@ async function ensureSoftDeleteColumns(env) {
       await s.run();
     }
   }
+
+  // Backfill updated_at_ts for legacy rows
+  try {
+    await env.DB.prepare(
+      `UPDATE tickets
+       SET updated_at_ts = CAST(strftime('%s', updated_at) AS INTEGER) * 1000
+       WHERE (updated_at_ts IS NULL OR updated_at_ts = 0)
+         AND updated_at IS NOT NULL AND TRIM(updated_at) <> ''`
+    ).run();
+  } catch {}
 }
 
 async function fetchExistingUpdatedMap(env, ids) {
@@ -143,11 +177,11 @@ async function fetchExistingUpdatedMap(env, ids) {
     const part = uniq.slice(i, i + CHUNK);
     if (part.length === 0) continue;
     const placeholders = part.map(() => "?").join(",");
-    const sql = `SELECT id, updated_at FROM tickets WHERE id IN (${placeholders})`;
+    const sql = `SELECT id, updated_at_ts, updated_at FROM tickets WHERE id IN (${placeholders})`;
     const { results } = await env.DB.prepare(sql).bind(...part).all();
     for (const r of results || []) {
       const id = Number(r.id);
-      if (Number.isFinite(id)) map.set(id, String(r.updated_at ?? ""));
+      if (Number.isFinite(id)) map.set(id, { ts: Number(r.updated_at_ts ?? 0) || 0, s: String(r.updated_at ?? "") });
     }
   }
   return map;
@@ -197,11 +231,12 @@ export async function onRequestPost({ request, env }) {
   const upsert = env.DB.prepare(
     `INSERT INTO tickets (
         id, date, issue, department, name, solution, remarks, type,
-        is_deleted, deleted_at, updated_at
+        is_deleted, deleted_at, updated_at, updated_at_ts
      ) VALUES (
         ?, ?, ?, ?, ?, ?, ?, ?,
-        ?, CASE WHEN ?=1 THEN COALESCE(NULLIF(?,''), datetime('now')) ELSE NULL END,
-        COALESCE(NULLIF(?,''), datetime('now'))
+        ?, CASE WHEN ?=1 THEN COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP) ELSE NULL END,
+        COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP),
+        CASE WHEN ?=1 THEN ? ELSE ? END
      )
      ON CONFLICT(id) DO UPDATE SET
         date=excluded.date,
@@ -213,8 +248,9 @@ export async function onRequestPost({ request, env }) {
         type=excluded.type,
         is_deleted=excluded.is_deleted,
         deleted_at=excluded.deleted_at,
-        updated_at=excluded.updated_at
-     WHERE (?=1) AND COALESCE(excluded.updated_at,'') > COALESCE(tickets.updated_at,'')`
+        updated_at=excluded.updated_at,
+        updated_at_ts=excluded.updated_at_ts
+     WHERE (?=1) AND COALESCE(excluded.updated_at_ts,0) > COALESCE(tickets.updated_at_ts,0)`
   );
 
   // D1's db.batch() already executes the statements in a single transaction.
@@ -232,7 +268,10 @@ export async function onRequestPost({ request, env }) {
     const stmts = [];
     for (const r of chunk) {
       const prev = r.id != null ? existingMap.get(r.id) : null;
-      const hasUpd = r.has_updated_at ? 1 : 0;
+      const hasVer = r.has_version ? 1 : 0;
+      const nowTs = Date.now();
+      const incomingTs = Number(r.updated_at_ts ?? 0) || 0;
+      const tsForInsert = incomingTs > 0 ? incomingTs : nowTs;
 
       // For deleted records without deleted_at, backend will fill now (insert-time) via SQL.
       stmts.push(
@@ -249,17 +288,23 @@ export async function onRequestPost({ request, env }) {
           r.is_deleted,
           r.deleted_at,
           r.updated_at,
-          hasUpd
+          hasVer,
+          incomingTs,
+          tsForInsert,
+          hasVer
         )
       );
 
       // Stats (best-effort, based on current snapshot)
+      const prevTs = prev ? (Number(prev.ts) || 0) : 0;
+      const prevStr = prev ? String(prev.s || "") : "";
+
       if (r.id == null || !existingMap.has(r.id)) {
         inserts++;
-        if (r.id != null) existingMap.set(r.id, r.updated_at || "");
-      } else if (hasUpd && String(r.updated_at || "") > String(prev || "")) {
+        if (r.id != null) existingMap.set(r.id, { ts: (incomingTs > 0 ? incomingTs : nowTs), s: r.updated_at || "" });
+      } else if (hasVer && ((incomingTs > 0 && incomingTs > prevTs) || (incomingTs === 0 && String(r.updated_at || "") > prevStr))) {
         updates++;
-        existingMap.set(r.id, r.updated_at);
+        existingMap.set(r.id, { ts: incomingTs > 0 ? incomingTs : nowTs, s: r.updated_at });
       } else {
         skips++;
         skipped_newer_or_equal++;

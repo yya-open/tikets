@@ -316,13 +316,27 @@ export async function onRequestPost({ request, env }) {
   const remarks = String(body?.remarks ?? "");
   const type = String(body?.type ?? "");
 
-  const r = await env.DB
-    .prepare(
-      `INSERT INTO tickets (date, issue, department, name, solution, remarks, type)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(date, issue, department, name, solution, remarks, type)
-    .run();
+  const nowTs = Date.now();
+
+  // Prefer new schema (updated_at_ts). If column doesn't exist yet, fall back gracefully.
+  let r;
+  try {
+    r = await env.DB
+      .prepare(
+        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at_ts, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+      )
+      .bind(date, issue, department, name, solution, remarks, type, nowTs)
+      .run();
+  } catch (e) {
+    r = await env.DB
+      .prepare(
+        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(date, issue, department, name, solution, remarks, type)
+      .run();
+  }
 
   return jsonResponse({ ok: true, id: r?.meta?.last_row_id ?? null }, { status: 201 });
 }
