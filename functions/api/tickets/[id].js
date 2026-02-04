@@ -246,6 +246,7 @@ export async function onRequestPut({ params, request, env }) {
       updated_at_ts: Number(latest?.updated_at_ts ?? nowTs) || nowTs,
     });
   }
+}
 
 
 export async function onRequestDelete({ params, request, env }) {
