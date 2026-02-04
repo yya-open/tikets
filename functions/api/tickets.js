@@ -9,9 +9,11 @@
  *   - q=keyword          -> LIKE search across issue/department/name/solution/remarks/type
  *   - page=1
  *   - pageSize=100       -> capped to 100
+ *   - cursor=<b64url>    -> keyset pagination cursor (optional)
+ *   - direction=next|prev
  *
  * Response:
- *   { data: Ticket[], page, pageSize, total }
+ *   { data: Ticket[], page, pageSize, total, next_cursor?, prev_cursor? }
  *
  * POST /api/tickets -> create ticket (requires X-EDIT-KEY)
  *
@@ -27,6 +29,35 @@ function jsonResponse(data, { status = 200, headers = {} } = {}) {
       ...headers,
     },
   });
+}
+
+async function sha256Hex(input) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));
+  const bytes = new Uint8Array(buf);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+async function respondCachedJson(request, payload, { maxAge = 30, status = 200 } = {}) {
+  const body = JSON.stringify(payload);
+  const etag = `W/"${await sha256Hex(body)}"`;
+
+  const headers = {
+    "content-type": "application/json; charset=UTF-8",
+    "cache-control": `public, max-age=${Math.max(0, Math.trunc(maxAge))}`,
+    etag,
+    vary: "accept-encoding",
+  };
+
+  const inm = request.headers.get("if-none-match") || request.headers.get("If-None-Match") || "";
+  if (inm === etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(body, { status, headers });
 }
 
 function getEditKeyFromRequest(request) {
@@ -57,6 +88,42 @@ function clampInt(n, { min = 1, max = 1000000, fallback = 1 } = {}) {
   return Math.max(min, Math.min(max, Math.trunc(v)));
 }
 
+function b64urlDecodeToString(input) {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
+  const base64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
+  try {
+    return atob(base64);
+  } catch {
+    return "";
+  }
+}
+
+function b64urlEncodeFromString(input) {
+  const b64 = btoa(String(input));
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeCursor(raw) {
+  const txt = b64urlDecodeToString(raw);
+  if (!txt) return null;
+  try {
+    const obj = JSON.parse(txt);
+    if (!obj) return null;
+    const v = String(obj.v ?? "");
+    const id = Number(obj.id);
+    if (!v || !Number.isFinite(id)) return null;
+    return { v, id: Math.trunc(id) };
+  } catch {
+    return null;
+  }
+}
+
+function encodeCursor({ v, id }) {
+  return b64urlEncodeFromString(JSON.stringify({ v: String(v), id: Number(id) }));
+}
+
 function normalizeDateParam(raw) {
   const s = String(raw || "").trim();
   if (!s) return "";
@@ -72,6 +139,10 @@ function normalizeTextParam(raw) {
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
+
+  const cursor = decodeCursor(url.searchParams.get("cursor"));
+  const directionRaw = String(url.searchParams.get("direction") || url.searchParams.get("dir") || "").toLowerCase();
+  const direction = directionRaw === "prev" || directionRaw === "previous" ? "prev" : "next";
 
   const page = clampInt(url.searchParams.get("page"), { min: 1, fallback: 1 });
   const pageSize = clampInt(url.searchParams.get("pageSize"), { min: 1, max: 100, fallback: 100 });
@@ -119,19 +190,62 @@ export async function onRequestGet({ request, env }) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const orderSql = trash
+  const sortCol = trash ? "deleted_at" : "date";
+
+  // Keyset pagination: if cursor exists, we add an extra WHERE clause and avoid OFFSET.
+  const cursorWhere = [];
+  const cursorBinds = [];
+  let orderSql = trash
     ? "ORDER BY deleted_at ASC, id ASC"
     : "ORDER BY date ASC, id ASC";
 
-  const listSql = `SELECT * FROM tickets ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
+  if (cursor) {
+    if (direction === "next") {
+      cursorWhere.push(`(${sortCol} > ? OR (${sortCol} = ? AND id > ?))`);
+      cursorBinds.push(cursor.v, cursor.v, cursor.id);
+      // keep ASC order
+    } else {
+      cursorWhere.push(`(${sortCol} < ? OR (${sortCol} = ? AND id < ?))`);
+      cursorBinds.push(cursor.v, cursor.v, cursor.id);
+      // fetch previous page in DESC order then reverse in memory
+      orderSql = trash
+        ? "ORDER BY deleted_at DESC, id DESC"
+        : "ORDER BY date DESC, id DESC";
+    }
+  }
+
+  const whereSqlWithCursor = cursorWhere.length
+    ? (whereSql ? `${whereSql} AND ${cursorWhere.join(" AND ")}` : `WHERE ${cursorWhere.join(" AND ")}`)
+    : whereSql;
+
+  const listSql = cursor
+    ? `SELECT * FROM tickets ${whereSqlWithCursor} ${orderSql} LIMIT ?`
+    : `SELECT * FROM tickets ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
   const countSql = `SELECT COUNT(*) as total FROM tickets ${whereSql}`;
 
   try {
     const countRow = await env.DB.prepare(countSql).bind(...binds).first();
     const total = Number(countRow?.total ?? 0) || 0;
 
-    const { results } = await env.DB.prepare(listSql).bind(...binds, pageSize, offset).all();
-    return jsonResponse({ data: results ?? [], page, pageSize, total });
+    const listStmt = env.DB.prepare(listSql);
+    const bound = cursor
+      ? listStmt.bind(...binds, ...cursorBinds, pageSize)
+      : listStmt.bind(...binds, pageSize, offset);
+    const { results } = await bound.all();
+
+    // If direction=prev we fetched in DESC order; reverse back to ASC for consistent UI.
+    const rows = Array.isArray(results) ? (direction === "prev" && cursor ? results.slice().reverse() : results) : [];
+
+    const first = rows.length ? rows[0] : null;
+    const last = rows.length ? rows[rows.length - 1] : null;
+    const prev_cursor = first ? encodeCursor({ v: first[sortCol], id: first.id }) : null;
+    const next_cursor = last ? encodeCursor({ v: last[sortCol], id: last.id }) : null;
+
+    return await respondCachedJson(
+      request,
+      { data: rows, page, pageSize, total, next_cursor, prev_cursor },
+      { maxAge: 30 }
+    );
   } catch (e) {
     // Backward compatible fallback (old schema without is_deleted/deleted_at)
     const where2 = [];
@@ -163,6 +277,7 @@ export async function onRequestGet({ request, env }) {
     }
 
     const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
+    // Old schema fallback: no trash/cursor. We keep OFFSET mode; keyset not guaranteed.
     const listSql2 = `SELECT * FROM tickets ${whereSql2} ORDER BY date ASC, id ASC LIMIT ? OFFSET ?`;
     const countSql2 = `SELECT COUNT(*) as total FROM tickets ${whereSql2}`;
 
@@ -170,7 +285,11 @@ export async function onRequestGet({ request, env }) {
     const total2 = Number(countRow2?.total ?? 0) || 0;
 
     const { results } = await env.DB.prepare(listSql2).bind(...binds2, pageSize, offset).all();
-    return jsonResponse({ data: results ?? [], page, pageSize, total: total2 });
+    return await respondCachedJson(
+      request,
+      { data: results ?? [], page, pageSize, total: total2 },
+      { maxAge: 30 }
+    );
   }
 }
 

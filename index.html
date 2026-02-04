@@ -1069,6 +1069,11 @@ const PAGE_SIZE_MAX = 100;
 let pageSize = 100;     // 可选更小，但上限 100
 let currentPage = 1;
 
+// ===== Keyset 游标分页（用于“上一页/下一页”更快；页码跳转仍走 OFFSET） =====
+let cursorNav = null; // { cursor: string, direction: 'next'|'prev' }
+let cursorKey = "";   // 当前筛选 + viewMode + pageSize
+const pageCursorMap = new Map(); // page -> { next_cursor, prev_cursor }
+
 // ===== 服务端分页（大数据量） =====
 let serverTotal = 0;          // 当前筛选下的总条数（用于分页 UI）
 let metaMonthCounts = {};     // 用于年份/月份按钮的“全量月份分布”（不受筛选影响，仅区分工单/回收站）
@@ -1331,6 +1336,13 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       return sp;
     }
 
+    function buildCursorKey() {
+      // 游标分页需要在“筛选条件不变”时才可复用 cursor
+      const sp = buildFilters({ includeYearMonth: true });
+      sp.set("pageSize", String(pageSize));
+      return sp.toString();
+    }
+
     function buildStatsKey() {
       // stats 不包含分页参数
       return buildFilters({ includeYearMonth: true }).toString();
@@ -1352,6 +1364,12 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       sp.set("page", String(currentPage));
       sp.set("pageSize", String(pageSize));
 
+      // 游标分页：仅用于“上一页/下一页”顺序翻页。
+      if (cursorNav && cursorNav.cursor) {
+        sp.set("cursor", cursorNav.cursor);
+        sp.set("direction", cursorNav.direction || "next");
+      }
+
       const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
       const j = await res.json();
@@ -1365,6 +1383,17 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       const ps = Number(j?.pageSize);
       if (Number.isFinite(ps) && ps > 0) pageSize = Math.min(ps, PAGE_SIZE_MAX);
       if (Number.isFinite(p) && p > 0) currentPage = p;
+
+      // 记录本页游标，用于更快的 prev/next
+      if (j && (j.next_cursor || j.prev_cursor)) {
+        pageCursorMap.set(currentPage, {
+          next_cursor: j.next_cursor || null,
+          prev_cursor: j.prev_cursor || null,
+        });
+      }
+
+      // 本次游标导航只生效一次
+      cursorNav = null;
     }
 
     async function loadStatsFromServer() {
@@ -1616,6 +1645,14 @@ async function renderTable({ resetPage = true } = {}) {
   const tbody = document.getElementById("recordTable").querySelector("tbody");
   tbody.innerHTML = "";
 
+  // 若筛选条件/视图变化，则清空游标分页状态
+  const newCursorKey = buildCursorKey();
+  if (resetPage || newCursorKey !== cursorKey) {
+    cursorKey = newCursorKey;
+    pageCursorMap.clear();
+    cursorNav = null;
+  }
+
   try {
     if (resetPage) currentPage = 1;
     await loadPageFromServer();
@@ -1738,19 +1775,37 @@ function renderPagination(totalItems) {
 
   const firstBtn = mkBtn("首页", {
     disabled: currentPage <= 1 || totalItems === 0,
-    onClick: () => { currentPage = 1; renderTable({ resetPage: false }); }
+    onClick: () => { cursorNav = null; currentPage = 1; renderTable({ resetPage: true }); }
   });
   const prevBtn = mkBtn("上一页", {
     disabled: currentPage <= 1 || totalItems === 0,
-    onClick: () => { currentPage -= 1; renderTable({ resetPage: false }); }
+    onClick: () => {
+      const c = pageCursorMap.get(currentPage);
+      if (c && c.prev_cursor) {
+        cursorNav = { cursor: c.prev_cursor, direction: "prev" };
+      } else {
+        cursorNav = null;
+      }
+      currentPage -= 1;
+      renderTable({ resetPage: false });
+    }
   });
   const nextBtn = mkBtn("下一页", {
     disabled: currentPage >= totalPages || totalItems === 0,
-    onClick: () => { currentPage += 1; renderTable({ resetPage: false }); }
+    onClick: () => {
+      const c = pageCursorMap.get(currentPage);
+      if (c && c.next_cursor) {
+        cursorNav = { cursor: c.next_cursor, direction: "next" };
+      } else {
+        cursorNav = null;
+      }
+      currentPage += 1;
+      renderTable({ resetPage: false });
+    }
   });
   const lastBtn = mkBtn("末页", {
     disabled: currentPage >= totalPages || totalItems === 0,
-    onClick: () => { currentPage = totalPages; renderTable({ resetPage: false }); }
+    onClick: () => { cursorNav = null; currentPage = totalPages; renderTable({ resetPage: false }); }
   });
 
   // 页码按钮（最多显示 7 个）
@@ -1769,7 +1824,7 @@ function renderPagination(totalItems) {
     controls.appendChild(mkBtn(String(p), {
       active: p === currentPage,
       disabled: totalItems === 0,
-      onClick: () => { currentPage = p; renderTable({ resetPage: false }); }
+      onClick: () => { cursorNav = null; currentPage = p; renderTable({ resetPage: false }); }
     }));
   }
 
@@ -1786,6 +1841,7 @@ function renderPagination(totalItems) {
   jump.onkeydown = (e) => {
     if (e.key === "Enter") {
       const p = clamp(Number(jump.value) || 1, 1, totalPages);
+      cursorNav = null;
       currentPage = p;
       renderTable({ resetPage: false });
       jump.value = "";
@@ -1796,6 +1852,7 @@ function renderPagination(totalItems) {
     disabled: totalItems === 0,
     onClick: () => {
       const p = clamp(Number(jump.value) || 1, 1, totalPages);
+      cursorNav = null;
       currentPage = p;
       renderTable({ resetPage: false });
       jump.value = "";

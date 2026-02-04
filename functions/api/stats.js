@@ -31,6 +31,35 @@ function jsonResponse(data, { status = 200, headers = {} } = {}) {
   });
 }
 
+async function sha256Hex(input) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));
+  const bytes = new Uint8Array(buf);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+async function respondCachedJson(request, payload, { maxAge = 60, status = 200 } = {}) {
+  const body = JSON.stringify(payload);
+  const etag = `W/"${await sha256Hex(body)}"`;
+
+  const headers = {
+    "content-type": "application/json; charset=UTF-8",
+    "cache-control": `public, max-age=${Math.max(0, Math.trunc(maxAge))}`,
+    etag,
+    vary: "accept-encoding",
+  };
+
+  const inm = request.headers.get("if-none-match") || request.headers.get("If-None-Match") || "";
+  if (inm === etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(body, { status, headers });
+}
+
 function normalizeDateParam(raw) {
   const s = String(raw || "").trim();
   if (!s) return "";
@@ -128,13 +157,17 @@ export async function onRequestGet({ request, env }) {
       month_counts[String(r.k)] = Number(r.c) || 0;
     }
 
-    return jsonResponse({
-      trash: trash ? 1 : 0,
-      total_all,
-      total_filtered,
-      type_counts,
-      month_counts,
-    });
+    return await respondCachedJson(
+      request,
+      {
+        trash: trash ? 1 : 0,
+        total_all,
+        total_filtered,
+        type_counts,
+        month_counts,
+      },
+      { maxAge: 60 }
+    );
   } catch (e) {
     // old schema fallback (no is_deleted)
     const baseWhere2 = [];
@@ -210,12 +243,16 @@ export async function onRequestGet({ request, env }) {
       month_counts[String(r.k)] = Number(r.c) || 0;
     }
 
-    return jsonResponse({
-      trash: trash ? 1 : 0,
-      total_all,
-      total_filtered,
-      type_counts,
-      month_counts,
-    });
+    return await respondCachedJson(
+      request,
+      {
+        trash: trash ? 1 : 0,
+        total_all,
+        total_filtered,
+        type_counts,
+        month_counts,
+      },
+      { maxAge: 60 }
+    );
   }
 }
