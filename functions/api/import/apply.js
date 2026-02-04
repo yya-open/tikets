@@ -117,7 +117,7 @@ async function ensureSoftDeleteColumns(env) {
   const stmts = [];
 
   if (!cols.has("updated_at")) {
-    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))"));
+    stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"));
   }
   if (!cols.has("is_deleted")) {
     stmts.push(env.DB.prepare("ALTER TABLE tickets ADD COLUMN is_deleted INTEGER DEFAULT 0"));
