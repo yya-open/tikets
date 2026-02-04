@@ -318,45 +318,42 @@ export async function onRequestPost({ request, env }) {
 
   const nowTs = Date.now();
 
-  // Prefer new schema (updated_at_ts). If column doesn't exist yet, fall back gracefully.
+  // Ensure the column exists (safe no-op if it already exists)
+  try {
+    await env.DB.prepare(`ALTER TABLE tickets ADD COLUMN updated_at_ts INTEGER`).run();
+  } catch (_) {}
+
+  // Insert with explicit updated_at_ts (direction A). If this fails, return the real error instead of silently falling back.
   let r;
   try {
     r = await env.DB
       .prepare(
-        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at_ts, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
       )
       .bind(date, issue, department, name, solution, remarks, type, nowTs)
       .run();
   } catch (e) {
-    // Fallback for older schema or unexpected insert errors: insert without updated_at_ts,
-    // then best-effort backfill updated_at_ts for this row if the column exists.
-    r = await env.DB
-      .prepare(
-        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(date, issue, department, name, solution, remarks, type)
-      .run();
-
-    const newId = r?.meta?.last_row_id ?? null;
-    if (newId) {
-      try {
-        await env.DB
-          .prepare(
-            `UPDATE tickets
-             SET updated_at=CURRENT_TIMESTAMP,
-                 updated_at_ts=?
-             WHERE id=?`
-          )
-          .bind(nowTs, newId)
-          .run();
-      } catch {
-        // ignore
-      }
-    }
+    return jsonResponse(
+      { ok: false, error: "insert_failed", detail: String(e?.message || e) },
+      { status: 500 }
+    );
   }
 
+  const id = r?.meta?.last_row_id ?? null;
 
-  return jsonResponse({ ok: true, id: r?.meta?.last_row_id ?? null }, { status: 201 });
+  // Hard guarantee: if for any reason the inserted row still has NULL/0, backfill just that row.
+  if (id != null) {
+    try {
+      await env.DB
+        .prepare(`UPDATE tickets SET updated_at_ts=? WHERE id=? AND (updated_at_ts IS NULL OR updated_at_ts=0)`)
+        .bind(nowTs, id)
+        .run();
+    } catch (_) {}
+  }
+
+  return jsonResponse(
+    { ok: true, id, updated_at_ts: nowTs, post_build: "directionA-ts-20260204" },
+    { status: 201 }
+  );
 }
