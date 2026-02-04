@@ -1468,35 +1468,43 @@ async function addOrUpdateRecord() {
         body: JSON.stringify({ ...payload, id: editingId, updated_at: editingUpdatedAt, updated_at_ts: editingUpdatedAtTs })
       });
 
-      // 冲突：别人已更新 -> 409
+            // 冲突：别人已更新 -> 409
       if (res.status === 409) {
         let info = null;
         try { info = await res.json(); } catch {}
         const latest = info && info.current ? normalizeRecord(info.current, editingId) : null;
 
+        // 先恢复按钮状态，避免用户感觉卡在“保存中…”
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = oldText || "保存修改";
+        }
+
         const overwrite = await showConfirm({
           title: "编辑冲突",
-          message: `建议使用【合并导入】（不清空云端）。
+          message: `这条记录刚刚被其他人/其他窗口更新过。
 
-合并规则：仅当备份记录的 updated_at 更新更晚时才覆盖云端同 id 记录。
-
-- 确认：合并到云端（安全）
-- 取消：仅导入本地（只影响你当前浏览器）`,
-        confirmText: "覆盖保存",
+你可以选择：
+- 【加载最新】：放弃本次修改，载入最新数据再编辑保存
+- 【覆盖保存】：用你当前填写的内容强制覆盖云端最新版本（谨慎）`,
+          confirmText: "覆盖保存",
           cancelText: "加载最新",
           danger: true
         });
 
         if (!overwrite) {
           await reloadAndRender({ showLoadedToast: false });
-          if (latest) {
-            fillFormFromRecord(latest);
-          }
+          if (latest) fillFormFromRecord(latest);
           showToast("已加载最新版本，请确认后重新编辑保存。", "info");
           return;
         }
 
-        // 覆盖保存（force）
+        // 覆盖保存（force）：重新进入保存中状态
+        if (btn) {
+          btn.disabled = true;
+          btn.innerText = "保存中...";
+        }
+
         res = await authedFetch(`/api/tickets/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1504,7 +1512,7 @@ async function addOrUpdateRecord() {
         });
       }
 
-      if (!res.ok) throw new Error(`update failed: ${res.status}`);
+if (!res.ok) throw new Error(`update failed: ${res.status}`);
 
       editingId = null;
       editingUpdatedAt = "";
