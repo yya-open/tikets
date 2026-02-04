@@ -329,6 +329,8 @@ export async function onRequestPost({ request, env }) {
       .bind(date, issue, department, name, solution, remarks, type, nowTs)
       .run();
   } catch (e) {
+    // Fallback for older schema or unexpected insert errors: insert without updated_at_ts,
+    // then best-effort backfill updated_at_ts for this row if the column exists.
     r = await env.DB
       .prepare(
         `INSERT INTO tickets (date, issue, department, name, solution, remarks, type)
@@ -336,7 +338,25 @@ export async function onRequestPost({ request, env }) {
       )
       .bind(date, issue, department, name, solution, remarks, type)
       .run();
+
+    const newId = r?.meta?.last_row_id ?? null;
+    if (newId) {
+      try {
+        await env.DB
+          .prepare(
+            `UPDATE tickets
+             SET updated_at=CURRENT_TIMESTAMP,
+                 updated_at_ts=?
+             WHERE id=?`
+          )
+          .bind(nowTs, newId)
+          .run();
+      } catch {
+        // ignore
+      }
+    }
   }
+
 
   return jsonResponse({ ok: true, id: r?.meta?.last_row_id ?? null }, { status: 201 });
 }
