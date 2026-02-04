@@ -137,7 +137,8 @@ async function ensureSoftDeleteColumns(env) {
 async function fetchExistingUpdatedMap(env, ids) {
   const map = new Map();
   const uniq = Array.from(new Set(ids)).filter((v) => Number.isFinite(v));
-  const CHUNK = 900;
+  // D1 / SQLite bound parameter limit can be relatively low. Use a conservative chunk size.
+  const CHUNK = 100;
   for (let i = 0; i < uniq.length; i += CHUNK) {
     const part = uniq.slice(i, i + CHUNK);
     if (part.length === 0) continue;

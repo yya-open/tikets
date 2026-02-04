@@ -152,7 +152,9 @@ async function fetchExistingMap(env, ids) {
   const map = new Map();
   if (!ids.length) return map;
 
-  const CHUNK = 900; // stay below SQLITE_MAX_VARIABLE_NUMBER
+  // Cloudflare D1 / SQLite has a limit on the number of bound parameters.
+  // Keep it conservative to avoid "too many SQL variables".
+  const CHUNK = 100;
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const placeholders = chunk.map(() => "?").join(",");
