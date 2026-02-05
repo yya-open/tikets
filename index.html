@@ -486,6 +486,21 @@
         <button type="button" class="btn-ghost" onclick="testEditKey()">测试口令</button>
       </div>
     </div>
+<div class="settings-item">
+  <div class="settings-main">
+    <div class="settings-title">一键初始化 / 自检</div>
+    <div class="settings-desc">管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。仅对写入口令有效。</div>
+    <div class="settings-meta">
+      结果：<span id="oneClickStatus" class="pill off">未运行</span>
+      <span class="settings-sep">|</span>
+      上次运行：<span id="oneClickAt">-</span>
+    </div>
+  </div>
+  <div class="settings-actions">
+    <button id="btnOneClick" type="button" class="secondary" onclick="runOneClickInit()" disabled>一键执行</button>
+    <button type="button" class="btn-ghost" onclick="showOneClickDetails()">查看详情</button>
+  </div>
+</div>
   </div>
 </div>
 
@@ -818,6 +833,9 @@
       const el2 = document.getElementById("editKeySetAt2");
       if (el1) el1.textContent = on ? setAt : "-";
       if (el2) el2.textContent = on ? setAt : "-";
+
+      const btn = document.getElementById("btnOneClick");
+      if (btn) btn.disabled = !on;
     }
 
     function openKeyModal() {
@@ -923,6 +941,83 @@
         if (typeof showToast === "function") showToast("无法连接服务端进行测试。", "error");
       }
     }
+
+
+// ===== 一键初始化 / 自检 =====
+let __oneClickLast = null;
+
+function setOneClickPill(state, text) {
+  const el = document.getElementById("oneClickStatus");
+  if (!el) return;
+  el.classList.remove("on", "off");
+  el.classList.add(state === "on" ? "on" : "off");
+  el.textContent = text || (state === "on" ? "成功" : "未运行");
+}
+
+function setOneClickAtNow() {
+  const el = document.getElementById("oneClickAt");
+  if (!el) return;
+  el.textContent = new Date().toLocaleString();
+}
+
+function showOneClickDetails() {
+  if (!__oneClickLast) {
+    if (typeof showToast === "function") showToast("暂无运行详情。", "info");
+    return;
+  }
+  const pretty = JSON.stringify(__oneClickLast, null, 2);
+  showModal({
+    title: "一键初始化 / 自检 详情",
+    message: `<pre style="max-height:50vh;overflow:auto;margin:0;padding:10px;border:1px solid #eee;border-radius:10px;background:#fafafa;">${escapeHtml(pretty)}</pre>`,
+    okText: "关闭",
+    variant: "primary",
+  });
+}
+async function runOneClickInit() {
+  const key = getEditKey();
+  if (!key) {
+    openKeyModal();
+    if (typeof showToast === "function") showToast("请先设置写入口令，再执行一键初始化。", "warning");
+    return;
+  }
+  const btn = document.getElementById("btnOneClick");
+  if (btn) btn.disabled = true;
+
+  try {
+    if (typeof showToast === "function") showToast("正在执行：迁移 → FTS 重建 → 自检…", "info");
+    const res = await fetch("/api/admin/oneclick", {
+      method: "POST",
+      headers: { "X-EDIT-KEY": key },
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    __oneClickLast = data;
+
+    if (res.ok && data && data.ok) {
+      setOneClickPill("on", "成功");
+      setOneClickAtNow();
+      if (typeof showToast === "function") showToast("一键初始化/自检完成 ✅", "success");
+    } else if (res.status === 403) {
+      clearEditKey();
+      clearEditKeySetAt();
+      updateEditKeyStatus();
+      setOneClickPill("off", "无权限");
+      if (typeof showToast === "function") showToast("口令无效（403），请重新设置。", "error");
+      openKeyModal();
+    } else {
+      setOneClickPill("off", "失败");
+      setOneClickAtNow();
+      if (typeof showToast === "function") showToast("一键初始化/自检失败，可点“查看详情”。", "error");
+    }
+  } catch (e) {
+    __oneClickLast = { ok: false, error: String(e) };
+    setOneClickPill("off", "失败");
+    setOneClickAtNow();
+    if (typeof showToast === "function") showToast("一键初始化/自检异常，可点“查看详情”。", "error");
+  } finally {
+    if (btn) btn.disabled = !getEditKey();
+  }
+}
 
 // ⭐ 本地存储：从 localStorage 恢复 records
     function loadFromLocal() {
