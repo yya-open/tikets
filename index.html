@@ -449,6 +449,22 @@
   flex: 0 0 auto;
 }
 
+
+  /* one-click details modal */
+  .details-card{ border:1px solid #eee; background:#fff; border-radius:16px; padding:14px 14px 10px; box-shadow:0 8px 24px rgba(0,0,0,.04); }
+  .details-title{ font-weight:700; font-size:14px; margin-bottom:10px; color:#111; }
+  .details-grid{ display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px 14px; }
+  @media (max-width: 560px){ .details-grid{ grid-template-columns: 1fr; } }
+  .kv{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .kv .k{ font-size:12px; color:#666; }
+  .kv .v{ display:flex; justify-content:flex-end; }
+  .pill.neutral{ border-color:#d0d7de; background:#f6f8fa; }
+  .pill.good{ border-color:#1a7f37; background:#dafbe1; }
+  .pill.bad{ border-color:#cf222e; background:#ffebe9; }
+  .pill.warn{ border-color:#9a6700; background:#fff8c5; }
+  .details-raw{ margin-top:12px; border:1px dashed #e5e7eb; border-radius:14px; padding:10px 12px; background:#fff; }
+  .details-raw > summary{ cursor:pointer; font-weight:600; color:#333; outline:none; }
+  .details-raw[open] > summary{ margin-bottom:8px; }
 </style>
 </head>
 <body>
@@ -960,19 +976,282 @@ function setOneClickAtNow() {
   el.textContent = new Date().toLocaleString();
 }
 
+
+function showModalPre({ title = "提示", text = "", okText = "关闭", copyText = "复制", variant = "primary" } = {}) {
+  const overlay = document.getElementById("modalOverlay");
+  const titleEl = document.getElementById("modalTitle");
+  const bodyEl = document.getElementById("modalBody");
+  const footerEl = document.getElementById("modalFooter");
+  const prevFocus = document.activeElement;
+  if (!overlay || !titleEl || !bodyEl || !footerEl) {
+    alert(text);
+    return Promise.resolve();
+  }
+
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.classList.add("show");
+  titleEl.textContent = title;
+  bodyEl.innerHTML = "";
+
+  const pre = document.createElement("pre");
+  pre.style.maxHeight = "55vh";
+  pre.style.overflow = "auto";
+  pre.style.margin = "0";
+  pre.style.padding = "12px";
+  pre.style.border = "1px solid #eee";
+  pre.style.borderRadius = "12px";
+  pre.style.background = "#fafafa";
+  pre.style.fontSize = "12px";
+  pre.style.lineHeight = "1.5";
+  pre.textContent = text;
+  bodyEl.appendChild(pre);
+
+  footerEl.innerHTML = "";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "m-btn secondary";
+  copyBtn.textContent = copyText;
+  copyBtn.onclick = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      if (typeof showToast === "function") showToast("已复制到剪贴板", "success");
+    } catch (e) {
+      if (typeof showToast === "function") showToast("复制失败，请手动选择复制", "error");
+    }
+  };
+
+  const okBtn = document.createElement("button");
+  okBtn.className = `m-btn ${variant}`;
+  okBtn.textContent = okText;
+
+  const close = () => {
+    overlay.classList.remove("show");
+    overlay.setAttribute("aria-hidden", "true");
+    if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+  };
+
+  okBtn.onclick = close;
+
+  footerEl.appendChild(copyBtn);
+  footerEl.appendChild(okBtn);
+
+  return Promise.resolve();
+}
+
+function formatMs(ms){
+  if (ms == null || ms === "" || isNaN(ms)) return "-";
+  const n = Number(ms);
+  if (n < 1000) return `${Math.round(n)} ms`;
+  const s = n/1000;
+  if (s < 60) return `${s.toFixed(2)} s`;
+  const m = Math.floor(s/60);
+  const ss = Math.round(s%60);
+  return `${m}m ${ss}s`;
+}
+
+function pill(text, tone="neutral"){
+  const span=document.createElement("span");
+  span.className=`pill ${tone}`;
+  span.textContent=text;
+  return span;
+}
+
+function makeKV(label, valueNode){
+  const row=document.createElement("div");
+  row.className="kv";
+  const k=document.createElement("div");
+  k.className="k";
+  k.textContent=label;
+  const v=document.createElement("div");
+  v.className="v";
+  if (valueNode instanceof Node) v.appendChild(valueNode);
+  else v.textContent=String(valueNode ?? "-");
+  row.appendChild(k);
+  row.appendChild(v);
+  return row;
+}
+
+function showModalDetails({ title="详情", summaryTitle="摘要", summaryItems=[], jsonText="", okText="关闭", copyText="复制 JSON", variant="primary" } = {}){
+  const overlay = document.getElementById("modalOverlay");
+  const titleEl = document.getElementById("modalTitle");
+  const bodyEl = document.getElementById("modalBody");
+  const footerEl = document.getElementById("modalFooter");
+  const prevFocus = document.activeElement;
+  if (!overlay || !titleEl || !bodyEl || !footerEl) {
+    alert(jsonText || "");
+    return Promise.resolve();
+  }
+
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.classList.add("show");
+  titleEl.textContent = title;
+  bodyEl.innerHTML = "";
+
+  // Summary card
+  const card=document.createElement("div");
+  card.className="details-card";
+  const h=document.createElement("div");
+  h.className="details-title";
+  h.textContent=summaryTitle;
+  card.appendChild(h);
+
+  const grid=document.createElement("div");
+  grid.className="details-grid";
+  (summaryItems||[]).forEach(it=>{
+    if(!it) return;
+    const {label, value, tone} = it;
+    const valNode = (value instanceof Node) ? value : pill(String(value ?? "-"), tone || "neutral");
+    grid.appendChild(makeKV(label, valNode));
+  });
+  card.appendChild(grid);
+  bodyEl.appendChild(card);
+
+  // Raw JSON (collapsible)
+  const details=document.createElement("details");
+  details.className="details-raw";
+  details.open=false;
+
+  const sum=document.createElement("summary");
+  sum.textContent="原始 JSON";
+  details.appendChild(sum);
+
+  const pre = document.createElement("pre");
+  pre.style.maxHeight = "45vh";
+  pre.style.overflow = "auto";
+  pre.style.margin = "10px 0 0 0";
+  pre.style.padding = "12px";
+  pre.style.border = "1px solid #eee";
+  pre.style.borderRadius = "12px";
+  pre.style.background = "#fafafa";
+  pre.style.fontSize = "12px";
+  pre.style.lineHeight = "1.5";
+  pre.textContent = jsonText || "";
+  details.appendChild(pre);
+
+  bodyEl.appendChild(details);
+
+  footerEl.innerHTML = "";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "m-btn secondary";
+  copyBtn.textContent = copyText;
+  copyBtn.onclick = async () => {
+    try {
+      const toCopy = jsonText || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(toCopy);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = toCopy;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      if (typeof showToast === "function") showToast("已复制到剪贴板", "success");
+    } catch (e) {
+      if (typeof showToast === "function") showToast("复制失败，请手动选择复制", "error");
+    }
+  };
+
+  const okBtn = document.createElement("button");
+  okBtn.className = `m-btn ${variant}`;
+  okBtn.textContent = okText;
+
+  const close = () => {
+    overlay.classList.remove("show");
+    overlay.setAttribute("aria-hidden", "true");
+    if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+  };
+  okBtn.onclick = close;
+
+  footerEl.appendChild(copyBtn);
+  footerEl.appendChild(okBtn);
+
+  return Promise.resolve();
+}
+
 function showOneClickDetails() {
   if (!__oneClickLast) {
     if (typeof showToast === "function") showToast("暂无运行详情。", "info");
     return;
   }
-  const pretty = JSON.stringify(__oneClickLast, null, 2);
-  showModal({
+  const d = __oneClickLast || {};
+  const pretty = JSON.stringify(d, null, 2);
+
+  const overallTone = d.ok ? "good" : "bad";
+  const migrateOk = d.migrate && d.migrate.ok;
+  const ftsOk = d.fts_rebuild && d.fts_rebuild.ok;
+  const scOk = d.selfcheck && d.selfcheck.ok;
+
+  const items = [
+    { label: "总状态", value: d.ok ? "OK" : "FAIL", tone: overallTone },
+    { label: "迁移(migrate)", value: migrateOk ? "OK" : (d.migrate ? "FAIL" : "—"), tone: migrateOk ? "good" : (d.migrate ? "bad" : "neutral") },
+    { label: "FTS 重建(rebuild)", value: ftsOk ? "OK" : (d.fts_rebuild ? "FAIL" : "—"), tone: ftsOk ? "good" : (d.fts_rebuild ? "bad" : "neutral") },
+    { label: "自检(selfcheck)", value: scOk ? "OK" : (d.selfcheck ? "FAIL" : "—"), tone: scOk ? "good" : (d.selfcheck ? "bad" : "neutral") },
+  ];
+
+  // Extra signal rows (best-effort)
+  if (d.migrate) {
+    const before = d.migrate.before ?? "-";
+    const after = d.migrate.after ?? "-";
+    items.push({ label: "schema 版本", value: `${before} → ${after}`, tone: (before === after) ? "neutral" : "good" });
+    if (Array.isArray(d.migrate.pending) && d.migrate.pending.length) {
+      items.push({ label: "待迁移", value: `${d.migrate.pending.length} 项`, tone: "warn" });
+    }
+  }
+  if (d.selfcheck && d.selfcheck.fts) {
+    const cnt = d.selfcheck.fts.count ?? "-";
+    items.push({ label: "FTS 行数", value: String(cnt), tone: "neutral" });
+  }
+  if (d.selfcheck && d.selfcheck.indexes) {
+    const miss = d.selfcheck.indexes.missing || [];
+    items.push({ label: "索引缺失", value: miss.length ? `${miss.length} 个` : "无", tone: miss.length ? "warn" : "good" });
+  }
+  const dur = d.duration_ms ?? d.duration ?? d.took_ms ?? d.took;
+  items.push({ label: "耗时", value: formatMs(dur), tone: "neutral" });
+
+  showModalDetails({
     title: "一键初始化 / 自检 详情",
-    message: `<pre style="max-height:50vh;overflow:auto;margin:0;padding:10px;border:1px solid #eee;border-radius:10px;background:#fafafa;">${escapeHtml(pretty)}</pre>`,
+    summaryTitle: "运行摘要",
+    summaryItems: items,
+    jsonText: pretty,
     okText: "关闭",
+    copyText: "复制 JSON",
     variant: "primary",
   });
 }
+() {
+  if (!__oneClickLast) {
+    if (typeof showToast === "function") showToast("暂无运行详情。", "info");
+    return;
+  }
+  const pretty = JSON.stringify(__oneClickLast, null, 2);
+  showModalPre({
+    title: "一键初始化 / 自检 详情",
+    text: pretty,
+    okText: "关闭",
+    copyText: "复制 JSON",
+    variant: "primary",
+  });
+}
+
 async function runOneClickInit() {
   const key = getEditKey();
   if (!key) {
