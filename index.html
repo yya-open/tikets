@@ -2512,13 +2512,28 @@ function loadBackup(event) {
         // 先按当前视图刷新一次
         await reloadAndRender();
 
-        // 友好提示
+        // 友好提示（增强：解释“版本更新/相同导致跳过”）
         const t2 = applyJson && applyJson.totals ? applyJson.totals : null;
         if (t2) {
-          showToast(
-            `导入完成：新增 ${t2.inserts} 条，更新 ${t2.updates} 条，跳过 ${t2.skips} 条（active ${t2.active} / trash ${t2.trash}）`,
-            "success"
-          );
+          const inserts = Number(t2.inserts || 0);
+          const updates = Number(t2.updates || 0);
+          const skips = Number(t2.skips || 0);
+          const newerEq = Number(t2.skipped_newer_or_equal || 0);
+
+          // 基础结果
+          let msg = `导入完成：新增 ${inserts} 条，更新 ${updates} 条，跳过 ${skips} 条（active ${t2.active} / trash ${t2.trash}）`;
+
+          // 解释性补充：云端版本更近/相同 → 跳过（保护线上数据）
+          if (newerEq > 0) {
+            msg += `；其中 ${newerEq} 条因云端版本更新/相同已跳过（保护线上数据）`;
+          }
+
+          // 如果本次完全没有写入，给更清晰的提示
+          if (inserts + updates === 0 && skips > 0) {
+            showToast(msg, "info");
+          } else {
+            showToast(msg, "success");
+          }
         } else {
           showToast("已合并导入到云端（未清空）。", "success");
         }
