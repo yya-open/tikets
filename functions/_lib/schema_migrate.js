@@ -7,14 +7,123 @@
  */
 
 function splitSqlStatements(sql) {
-  // Simple splitter for *single-statement* migrations.
-  // IMPORTANT: Do NOT use this for scripts that include triggers (BEGIN...END)
-  // because semicolons inside the trigger body would be split and cause
-  // `SQLITE_ERROR: incomplete input`.
-  return sql
-    .split(/;\s*(?:\r?\n|$)/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // Safe SQL splitter that keeps CREATE TRIGGER ... BEGIN ... END; blocks intact.
+  // It splits on semicolons that are NOT inside quotes/comments and NOT inside a BEGIN...END block.
+  const s = String(sql || "");
+  const out = [];
+  let cur = "";
+  let i = 0;
+
+  let inS = false; // single quote
+  let inD = false; // double quote
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  // BEGIN...END nesting (helps keep trigger bodies intact)
+  let beginDepth = 0;
+
+  function isWordChar(ch) {
+    return /[A-Za-z0-9_]/.test(ch);
+  }
+  function readWordAt(pos) {
+    // read uppercased keyword at pos if starts with letter/underscore
+    if (pos < 0 || pos >= s.length) return "";
+    if (!/[A-Za-z_]/.test(s[pos])) return "";
+    let j = pos;
+    while (j < s.length && isWordChar(s[j])) j++;
+    return s.slice(pos, j).toUpperCase();
+  }
+
+  while (i < s.length) {
+    const ch = s[i];
+    const next = i + 1 < s.length ? s[i + 1] : "";
+
+    // Handle comments
+    if (inLineComment) {
+      cur += ch;
+      if (ch === "
+") inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      cur += ch;
+      if (ch === "*" && next === "/") {
+        cur += next;
+        i += 2;
+        inBlockComment = false;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    // Start comments (only if not in quotes)
+    if (!inS && !inD) {
+      if (ch === "-" && next === "-") {
+        cur += ch + next;
+        i += 2;
+        inLineComment = true;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        cur += ch + next;
+        i += 2;
+        inBlockComment = true;
+        continue;
+      }
+    }
+
+    // Handle quotes
+    if (!inD && ch === "'" ) {
+      // SQLite escapes single quote as ''
+      cur += ch;
+      if (inS && next === "'") {
+        cur += next;
+        i += 2;
+        continue;
+      }
+      inS = !inS;
+      i++;
+      continue;
+    }
+    if (!inS && ch === '"') {
+      cur += ch;
+      inD = !inD;
+      i++;
+      continue;
+    }
+
+    // Track BEGIN/END keywords when not in quotes
+    if (!inS && !inD) {
+      const prev = i - 1 >= 0 ? s[i - 1] : "";
+      const atWordStart = !isWordChar(prev) && /[A-Za-z_]/.test(ch);
+      if (atWordStart) {
+        const word = readWordAt(i);
+        if (word === "BEGIN") {
+          beginDepth++;
+        } else if (word === "END") {
+          if (beginDepth > 0) beginDepth--;
+        }
+      }
+    }
+
+    // Split on semicolon if safe
+    if (!inS && !inD && beginDepth === 0 && ch === ";") {
+      const stmt = cur.trim();
+      if (stmt) out.push(stmt + ";");
+      cur = "";
+      i++;
+      continue;
+    }
+
+    cur += ch;
+    i++;
+  }
+
+  const tail = cur.trim();
+  if (tail) out.push(tail.endsWith(";") ? tail : (tail + ";"));
+  return out;
 }
 
 const MIGRATIONS = [
@@ -70,22 +179,10 @@ export async function applyPendingMigrations(db) {
   const applied = [];
 
   for (const m of pending) {
-    // Prefer db.exec() for multi-statement scripts (especially triggers), because
-    // naive semicolon splitting will break BEGIN...END blocks and cause
-    // `SQLITE_ERROR: incomplete input`.
-    const sqlText = (m.sql || '').trim().endsWith(';') ? (m.sql || '').trim() : ((m.sql || '').trim() + ';');
-    let executed = 0;
-
-    if (typeof db.exec === 'function') {
-      await db.exec(sqlText);
-      executed = 1; // executed as a single script
-    } else {
-      // Fallback: only safe for simple migrations without trigger bodies.
-      const statements = splitSqlStatements(m.sql);
-      const stmts = statements.map((s) => db.prepare(s.endsWith(';') ? s : (s + ';')));
-      if (stmts.length) await db.batch(stmts);
-      executed = stmts.length;
-    }
+    const statements = splitSqlStatements(m.sql);
+    const stmts = statements.map((s) => db.prepare(s));
+    if (stmts.length) await db.batch(stmts);
+    const executed = stmts.length;
 
     await db
       .prepare("INSERT INTO schema_migrations(version, name) VALUES(?, ?);")
