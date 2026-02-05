@@ -334,8 +334,6 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
-    }
-  }
 
   // A1: auto-heal FTS index after successful bulk import
   let fts_rebuild = null;
