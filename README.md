@@ -90,3 +90,23 @@ EDIT_KEY = "你自己的口令"
 页面右上角有「设置写入口令」按钮，会把口令保存到浏览器 localStorage；
 之后新增/编辑/删除/导入都会自动带上 `X-EDIT-KEY`。
 
+
+
+## 性能优化（推荐）
+
+### 1) 边缘缓存（stats / tickets）
+- `GET /api/stats` 与未携带 `x-edit-key` 的 `GET /api/tickets` 已支持 **ETag + Edge Cache**。
+- 默认 TTL：stats 60s、tickets 30s（并带 `stale-while-revalidate=300`）。
+
+验证方法：
+- 浏览器 DevTools → Network → 观察 Response Headers：
+  - `cache-control` 包含 `s-maxage=...`
+  - `etag` 存在
+  - Cloudflare 侧会逐步出现 `cf-cache-status: HIT`（第二次请求常见）
+
+### 2) D1 索引（必须手动执行一次）
+请在 D1 Console 执行以下文件的 SQL（可重复执行，不会报错）：
+- `migrations/perf_indexes.sql`
+
+执行后：
+- 列表 / 分页 / 回收站 / stats 的查询会更稳定、更快（数据量越大越明显）。

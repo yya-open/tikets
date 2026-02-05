@@ -103,7 +103,7 @@ function buildFtsQuery(q) {
 
 
 
-export async function onRequestGet({ request, env }) {
+async function handleGet({ request, env }) {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
 
@@ -350,4 +350,50 @@ export async function onRequestGet({ request, env }) {
       { maxAge: 60 }
     );
   }
+}
+
+function isCacheableGet(request) {
+  // Only cache public read requests (no edit key)
+  if ((request.method || "GET").toUpperCase() !== "GET") return false;
+  const k = request.headers.get("x-edit-key") || request.headers.get("X-EDIT-KEY");
+  if (k && String(k).trim()) return false;
+  return true;
+}
+
+export async function onRequestGet(ctx) {
+  const request = ctx.request;
+  const env = ctx.env;
+  if (!isCacheableGet(request)) {
+    return await handleGet({ request, env });
+  }
+
+  const url = new URL(request.url);
+  const cacheKey = new Request(url.toString(), { method: "GET" });
+  const cache = caches.default;
+
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    const h = new Headers(hit.headers);
+    h.set("x-edge-cache", "HIT");
+    return new Response(hit.body, { status: hit.status, headers: h });
+  }
+
+
+  const res = await handleGet({ request, env });
+  // Cache only successful JSON responses (avoid caching 304/errors)
+  if (res && res.status === 200) {
+    // Ensure edge can cache: add s-maxage if not present
+    const cc = res.headers.get("cache-control") || "";
+    if (!/s-maxage=\d+/i.test(cc)) {
+      const headers = new Headers(res.headers);
+      const maxAgeMatch = /max-age=(\d+)/i.exec(cc);
+      const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : 60;
+      headers.set("cache-control", `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=300`);
+      const cloned = new Response(res.body, { status: res.status, headers });
+      await cache.put(cacheKey, cloned.clone());
+      return cloned;
+    }
+    await cache.put(cacheKey, res.clone());
+  }
+  return res;
 }
