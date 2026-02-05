@@ -68,7 +68,7 @@ export async function applyPendingMigrations(db) {
 
   for (const m of pending) {
     const statements = splitSqlStatements(m.sql);
-    const stmts = statements.map((s) => db.prepare(s));
+    const stmts = statements.map((s) => db.prepare(s.endsWith(';') ? s : (s + ';')));
     if (stmts.length) {
       await db.batch(stmts);
     }
