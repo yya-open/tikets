@@ -1203,10 +1203,18 @@ function normalizeOneClickResult(raw) {
   // Support both:
   // 1) direct fields: { migrate:{...}, fts_rebuild:{...}, selfcheck:{...} }
   // 2) steps list: { steps:[ { name:'migrate', ok:true, ... }, ... ] }
-  const stepsArr = Array.isArray(r.steps) ? r.steps : null;
+  const stepsVal = pick(r, ['steps','step','detail','details','runs'], null);
+  const stepsArr = Array.isArray(stepsVal) ? stepsVal : null;
+  const stepsObj = (!stepsArr && stepsVal && typeof stepsVal === 'object') ? stepsVal : null;
   const byName = (name) => {
-    if (!stepsArr) return null;
-    return stepsArr.find(s => (s && (s.name === name || s.step === name || s.type === name))) || null;
+    if (stepsArr) {
+      return stepsArr.find(s => (s && (s.name === name || s.step === name || s.type === name))) || null;
+    }
+    if (stepsObj) {
+      // support direct object map: steps.{migrate, fts_rebuild, selfcheck}
+      return stepsObj[name] || stepsObj[name.replace(/-/g,'_')] || stepsObj[name.replace(/_/g,'-')] || null;
+    }
+    return null;
   };
 
   out.migrate = r.migrate || byName('migrate') || null;
@@ -1240,49 +1248,6 @@ function stepLabel(obj) {
   return { text: '未知', tone: 'neutral' };
 }
 
-function normalizeOneClickResult(raw) {
-  // raw may be {ok,...} or {ok, data:{...}} depending on endpoint implementation
-  const r = (raw && typeof raw === "object" && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
-  const out = { raw: raw || {}, data: r || {} };
-
-  // helpers
-  const pick = (obj, keys, defVal = undefined) => {
-    for (const k of keys) {
-      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined && obj[k] !== null) return obj[k];
-    }
-    return defVal;
-  };
-
-  // Support both:
-  // 1) direct fields: { migrate:{...}, fts_rebuild:{...}, selfcheck:{...} }
-  // 2) steps list: { steps:[ { name:'migrate', ok:true, ... }, ... ] }
-  const stepsArr = Array.isArray(r.steps) ? r.steps : (r.selfcheck && Array.isArray(r.selfcheck.steps) ? r.selfcheck.steps : null);
-  const byName = (name) => {
-    if (!stepsArr) return null;
-    return stepsArr.find(s => (s && (s.name === name || s.step === name || s.type === name))) || null;
-  };
-
-  out.migrate = r.migrate || byName("migrate") || null;
-  out.fts = r.fts_rebuild || r.fts || byName("fts_rebuild") || byName("rebuild") || byName("fts") || null;
-  out.selfcheck = r.selfcheck || byName("selfcheck") || byName("check") || null;
-
-  // duration: prefer explicit, else sum steps duration fields if available
-  const dur =
-    (pick(r, ["duration_ms", "duration", "took_ms", "took"], null) ?? null);
-
-  const sumDur =
-    (pick(out.migrate, ["duration_ms", "duration", "took_ms", "took"], 0) || 0) +
-    (pick(out.fts, ["duration_ms", "duration", "took_ms", "took"], 0) || 0) +
-    (pick(out.selfcheck, ["duration_ms", "duration", "took_ms", "took"], 0) || 0);
-
-  out.duration = (typeof dur === "number" && isFinite(dur) && dur > 0) ? dur : ((typeof sumDur === "number" && isFinite(sumDur) && sumDur > 0) ? sumDur : null);
-
-  // overall ok: prefer top-level ok else infer later
-  const ok = (typeof r.ok === "boolean") ? r.ok : ((raw && typeof raw.ok === "boolean") ? raw.ok : null);
-  out.ok = (ok !== null) ? ok : null;
-
-  return out;
-}
 
 function stepLabel(obj) {
   if (!obj) return { text: "未执行", tone: "neutral" };
