@@ -1237,7 +1237,7 @@ function showOneClickDetails() {
     variant: "primary",
   });
 }
-() {
+function openOneClickDetails() {
   if (!__oneClickLast) {
     if (typeof showToast === "function") showToast("暂无运行详情。", "info");
     return;
