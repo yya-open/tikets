@@ -110,3 +110,11 @@ EDIT_KEY = "你自己的口令"
 
 执行后：
 - 列表 / 分页 / 回收站 / stats 的查询会更稳定、更快（数据量越大越明显）。
+
+
+## Schema migrations（避免漏跑SQL）
+
+- 查看当前版本：GET `/api/admin/migrate`
+- 应用迁移（需要 `x-edit-key`）：POST `/api/admin/migrate`
+
+建议每次部署后先执行一次 POST，确保 D1 schema/索引/FTS 同步。
