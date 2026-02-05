@@ -39,6 +39,22 @@ function requireEditKey(request, env) {
   return null;
 }
 
+
+async function tryRebuildFTS(env) {
+  // External-content FTS5 may need rebuild after bulk changes (import).
+  // If tickets_fts doesn't exist, silently ignore.
+  try {
+    await env.DB.prepare("INSERT INTO tickets_fts(tickets_fts) VALUES('rebuild')").run();
+    return { ok: true };
+  } catch (e) {
+    const msg = String(e || "");
+    if (/no such table: tickets_fts/i.test(msg) || /no such module: fts5/i.test(msg)) {
+      return { ok: false, skipped: true };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
 function pickFirstNonEmptyArray(...arrs) {
   for (const a of arrs) {
     if (Array.isArray(a) && a.length > 0) return a;
@@ -318,8 +334,20 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
+    }
+  }
+
+  // A1: auto-heal FTS index after successful bulk import
+  let fts_rebuild = null;
+  if (inserts + updates > 0) {
+    const rr = await tryRebuildFTS(env);
+    // Don't fail the import if rebuild fails; surface it for observability.
+    fts_rebuild = rr;
+  }
+
   return jsonResponse({
     ok: true,
+    ...(fts_rebuild ? { fts_rebuild } : {}),
     totals: {
       incoming: incoming.length,
       active: norm.active.length,

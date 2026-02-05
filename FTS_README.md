@@ -22,3 +22,8 @@
 
 - 仍然使用 `q=keyword`
 - 行为：**有 tickets_fts → FTS**；**没有 tickets_fts → LIKE**
+
+
+## A1 自动自愈
+- 导入应用（/api/import/apply）在 inserts/updates > 0 时会自动执行一次 `tickets_fts` rebuild。
+- 如需手动重建：POST `/api/fts/rebuild`（需要 `x-edit-key`）。
