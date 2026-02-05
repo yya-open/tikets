@@ -465,6 +465,31 @@
   .details-raw{ margin-top:12px; border:1px dashed #e5e7eb; border-radius:14px; padding:10px 12px; background:#fff; }
   .details-raw > summary{ cursor:pointer; font-weight:600; color:#333; outline:none; }
   .details-raw[open] > summary{ margin-bottom:8px; }
+
+
+/* ---- Settings card compact layout (final form) ---- */
+#settingsCard .card-head.compact{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+#settingsCard .card-head-sub{color:var(--muted);font-size:13px;line-height:1.35}
+.settings-group.compact{display:flex;flex-direction:column;gap:10px}
+.settings-item{border:1px solid #eef0f3;border-radius:14px;background:#fff;overflow:hidden}
+.settings-item[open]{box-shadow:0 10px 26px rgba(0,0,0,.06)}
+.settings-summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px;cursor:pointer}
+.settings-summary::-webkit-details-marker{display:none}
+.settings-left{display:flex;flex-direction:column;gap:4px;min-width:0}
+.settings-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.settings-title{font-weight:800}
+.settings-meta{color:var(--muted);font-size:12.5px}
+.settings-desc{padding:10px 12px 12px;color:#60646b;font-size:13px;line-height:1.5;border-top:1px dashed #eef0f3}
+#settingsCard .settings-actions{display:flex;gap:10px;flex-wrap:wrap}
+#settingsCard .settings-actions button{padding:9px 12px;border-radius:12px}
+#settingsCard .pill{padding:4px 10px;font-size:12px}
+@media (max-width: 520px){
+  .settings-summary{flex-direction:column;align-items:flex-start}
+  #settingsCard .settings-actions{width:100%}
+  #settingsCard .settings-actions button{flex:1}
+}
+/* ----------------------------------------------- */
+
 </style>
 </head>
 <body>
@@ -483,40 +508,53 @@
 
 
 <div class="card" id="settingsCard">
-  <h2>系统设置</h2>
+  <div class="card-head compact">
+    <h2>系统设置</h2>
+    <div class="card-head-sub">只影响“写入/管理”能力；普通浏览仅需查询与导出。</div>
+  </div>
 
-  <div class="settings-group">
-    <div class="settings-item">
-      <div class="settings-main">
-        <div class="settings-title">写入权限</div>
-        <div class="settings-desc">读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器。</div>
-        <div class="settings-meta">
-          状态：<span id="editKeyStatus" class="pill off">未设置</span>
-          <span class="settings-sep">|</span>
-          上次设置：<span id="editKeySetAt">-</span>
+  <div class="settings-group compact">
+    <details class="settings-item" id="settingsEditKey">
+      <summary class="settings-summary">
+        <div class="settings-left">
+          <div class="settings-title-row">
+            <div class="settings-title">写入权限</div>
+            <span id="editKeyStatus" class="pill off">未设置</span>
+          </div>
+          <div class="settings-meta">上次设置：<span id="editKeySetAt">-</span></div>
         </div>
-      </div>
 
-      <div class="settings-actions">
-        <button type="button" class="secondary" onclick="openKeyModal()">管理口令</button>
-        <button type="button" class="btn-ghost" onclick="testEditKey()">测试口令</button>
+        <div class="settings-actions">
+          <button type="button" class="secondary" onclick="event.stopPropagation(); openKeyModal();">管理口令</button>
+          <button type="button" class="btn-ghost" onclick="event.stopPropagation(); testEditKey();">测试</button>
+        </div>
+      </summary>
+
+      <div class="settings-desc">
+        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器。
       </div>
-    </div>
-<div class="settings-item">
-  <div class="settings-main">
-    <div class="settings-title">一键初始化 / 自检</div>
-    <div class="settings-desc">管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。仅对写入口令有效。</div>
-    <div class="settings-meta">
-      结果：<span id="oneClickStatus" class="pill off">未运行</span>
-      <span class="settings-sep">|</span>
-      上次运行：<span id="oneClickAt">-</span>
-    </div>
-  </div>
-  <div class="settings-actions">
-    <button id="btnOneClick" type="button" class="secondary" onclick="runOneClickInit()" disabled>一键执行</button>
-    <button type="button" class="btn-ghost" onclick="showOneClickDetails()">查看详情</button>
-  </div>
-</div>
+    </details>
+
+    <details class="settings-item" id="settingsOneClick">
+      <summary class="settings-summary">
+        <div class="settings-left">
+          <div class="settings-title-row">
+            <div class="settings-title">一键初始化 / 自检</div>
+            <span id="oneClickStatus" class="pill off">未运行</span>
+          </div>
+          <div class="settings-meta">上次运行：<span id="oneClickAt">-</span></div>
+        </div>
+
+        <div class="settings-actions">
+          <button id="btnOneClick" type="button" class="secondary" onclick="event.stopPropagation(); runOneClickInit();" disabled>一键执行</button>
+          <button type="button" class="btn-ghost" onclick="event.stopPropagation(); showOneClickDetails();">详情</button>
+        </div>
+      </summary>
+
+      <div class="settings-desc">
+        管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。仅对写入口令有效。
+      </div>
+    </details>
   </div>
 </div>
 
