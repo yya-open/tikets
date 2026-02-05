@@ -7,7 +7,10 @@
  */
 
 function splitSqlStatements(sql) {
-  // Simple splitter: good enough for our migration scripts (no semicolons in strings).
+  // Simple splitter for *single-statement* migrations.
+  // IMPORTANT: Do NOT use this for scripts that include triggers (BEGIN...END)
+  // because semicolons inside the trigger body would be split and cause
+  // `SQLITE_ERROR: incomplete input`.
   return sql
     .split(/;\s*(?:\r?\n|$)/g)
     .map((s) => s.trim())
@@ -67,10 +70,21 @@ export async function applyPendingMigrations(db) {
   const applied = [];
 
   for (const m of pending) {
-    const statements = splitSqlStatements(m.sql);
-    const stmts = statements.map((s) => db.prepare(s.endsWith(';') ? s : (s + ';')));
-    if (stmts.length) {
-      await db.batch(stmts);
+    // Prefer db.exec() for multi-statement scripts (especially triggers), because
+    // naive semicolon splitting will break BEGIN...END blocks and cause
+    // `SQLITE_ERROR: incomplete input`.
+    const sqlText = (m.sql || '').trim().endsWith(';') ? (m.sql || '').trim() : ((m.sql || '').trim() + ';');
+    let executed = 0;
+
+    if (typeof db.exec === 'function') {
+      await db.exec(sqlText);
+      executed = 1; // executed as a single script
+    } else {
+      // Fallback: only safe for simple migrations without trigger bodies.
+      const statements = splitSqlStatements(m.sql);
+      const stmts = statements.map((s) => db.prepare(s.endsWith(';') ? s : (s + ';')));
+      if (stmts.length) await db.batch(stmts);
+      executed = stmts.length;
     }
 
     await db
@@ -78,7 +92,7 @@ export async function applyPendingMigrations(db) {
       .bind(m.version, m.name)
       .run();
 
-    applied.push({ version: m.version, name: m.name, statements: stmts.length });
+    applied.push({ version: m.version, name: m.name, statements: executed });
   }
 
   return { applied, latest: latestSchemaVersion() };
