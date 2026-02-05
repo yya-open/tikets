@@ -1065,7 +1065,7 @@ function formatMs(ms){
 function pill(text, tone="neutral"){
   const span=document.createElement("span");
   span.className=`pill ${tone}`;
-  span.textContent=text;
+  span.textContent = (text===null || text===undefined || text==='') ? '未执行' : String(text);
   return span;
 }
 
@@ -1187,45 +1187,184 @@ function showModalDetails({ title="详情", summaryTitle="摘要", summaryItems=
   return Promise.resolve();
 }
 
+function normalizeOneClickResult(raw) {
+  // raw may be {ok,...} or {ok, data:{...}} depending on endpoint implementation
+  const r = (raw && typeof raw === "object" && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
+  const out = { raw: raw || {}, data: r || {} };
+
+  // helpers
+  const pick = (obj, keys, defVal = undefined) => {
+    for (const k of keys) {
+      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined && obj[k] !== null) return obj[k];
+    }
+    return defVal;
+  };
+
+  // Support both:
+  // 1) direct fields: { migrate:{...}, fts_rebuild:{...}, selfcheck:{...} }
+  // 2) steps list: { steps:[ { name:'migrate', ok:true, ... }, ... ] }
+  const stepsArr = Array.isArray(r.steps) ? r.steps : null;
+  const byName = (name) => {
+    if (!stepsArr) return null;
+    return stepsArr.find(s => (s && (s.name === name || s.step === name || s.type === name))) || null;
+  };
+
+  out.migrate = r.migrate || byName('migrate') || null;
+  out.fts = r.fts_rebuild || r.fts || byName('fts_rebuild') || byName('rebuild') || byName('fts') || null;
+  out.selfcheck = r.selfcheck || byName('selfcheck') || byName('check') || null;
+
+  // duration: prefer explicit, else sum steps duration fields if available
+  const dur =
+    pick(r, ['duration_ms','duration','took_ms','took'], null) ??
+    (pick(out.migrate, ['duration_ms','duration','took_ms','took'], 0) +
+     pick(out.fts, ['duration_ms','duration','took_ms','took'], 0) +
+     pick(out.selfcheck, ['duration_ms','duration','took_ms','took'], 0));
+
+  out.duration = (typeof dur === 'number' && isFinite(dur) && dur > 0) ? dur : null;
+
+  // overall ok: prefer top-level ok else infer from steps present
+    out.ok = (typeof r.ok === 'boolean') ? r.ok : (typeof raw?.ok === 'boolean' ? raw.ok : null);
+
+  return out;
+}
+
+function stepLabel(obj) {
+  if (!obj) return { text: '未执行', tone: 'neutral' };
+  if (obj.skipped || obj.skip) return { text: '跳过', tone: 'neutral' };
+  if (obj.ok === true) return { text: '成功', tone: 'good' };
+  if (obj.ok === false) return { text: '失败', tone: 'bad' };
+  const st = (obj.status || obj.state || '').toString().toLowerCase();
+  if (st === 'ok' || st === 'success') return { text: '成功', tone: 'good' };
+  if (st === 'fail' || st === 'error') return { text: '失败', tone: 'bad' };
+  if (st === 'skip' || st === 'skipped') return { text: '跳过', tone: 'neutral' };
+  return { text: '未知', tone: 'neutral' };
+}
+
+function normalizeOneClickResult(raw) {
+  // raw may be {ok,...} or {ok, data:{...}} depending on endpoint implementation
+  const r = (raw && typeof raw === "object" && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
+  const out = { raw: raw || {}, data: r || {} };
+
+  // helpers
+  const pick = (obj, keys, defVal = undefined) => {
+    for (const k of keys) {
+      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined && obj[k] !== null) return obj[k];
+    }
+    return defVal;
+  };
+
+  // Support both:
+  // 1) direct fields: { migrate:{...}, fts_rebuild:{...}, selfcheck:{...} }
+  // 2) steps list: { steps:[ { name:'migrate', ok:true, ... }, ... ] }
+  const stepsArr = Array.isArray(r.steps) ? r.steps : (r.selfcheck && Array.isArray(r.selfcheck.steps) ? r.selfcheck.steps : null);
+  const byName = (name) => {
+    if (!stepsArr) return null;
+    return stepsArr.find(s => (s && (s.name === name || s.step === name || s.type === name))) || null;
+  };
+
+  out.migrate = r.migrate || byName("migrate") || null;
+  out.fts = r.fts_rebuild || r.fts || byName("fts_rebuild") || byName("rebuild") || byName("fts") || null;
+  out.selfcheck = r.selfcheck || byName("selfcheck") || byName("check") || null;
+
+  // duration: prefer explicit, else sum steps duration fields if available
+  const dur =
+    (pick(r, ["duration_ms", "duration", "took_ms", "took"], null) ?? null);
+
+  const sumDur =
+    (pick(out.migrate, ["duration_ms", "duration", "took_ms", "took"], 0) || 0) +
+    (pick(out.fts, ["duration_ms", "duration", "took_ms", "took"], 0) || 0) +
+    (pick(out.selfcheck, ["duration_ms", "duration", "took_ms", "took"], 0) || 0);
+
+  out.duration = (typeof dur === "number" && isFinite(dur) && dur > 0) ? dur : ((typeof sumDur === "number" && isFinite(sumDur) && sumDur > 0) ? sumDur : null);
+
+  // overall ok: prefer top-level ok else infer later
+  const ok = (typeof r.ok === "boolean") ? r.ok : ((raw && typeof raw.ok === "boolean") ? raw.ok : null);
+  out.ok = (ok !== null) ? ok : null;
+
+  return out;
+}
+
+function stepLabel(obj) {
+  if (!obj) return { text: "未执行", tone: "neutral" };
+  if (obj.skipped || obj.skip) return { text: "跳过", tone: "neutral" };
+  if (obj.ok === true) return { text: "成功", tone: "good" };
+  if (obj.ok === false) return { text: "失败", tone: "bad" };
+  // Some implementations return {status:'ok'|'fail'|'skip'}
+  const st = (obj.status || obj.state || "").toString().toLowerCase();
+  if (st === "ok" || st === "success") return { text: "成功", tone: "good" };
+  if (st === "fail" || st === "error") return { text: "失败", tone: "bad" };
+  if (st === "skip" || st === "skipped") return { text: "跳过", tone: "neutral" };
+  return { text: "未知", tone: "neutral" };
+}
+
 function showOneClickDetails() {
   if (!__oneClickLast) {
     if (typeof showToast === "function") showToast("暂无运行详情。", "info");
     return;
   }
-  const d = __oneClickLast || {};
-  const pretty = JSON.stringify(d, null, 2);
 
-  const overallTone = d.ok ? "good" : "bad";
-  const migrateOk = d.migrate && d.migrate.ok;
-  const ftsOk = d.fts_rebuild && d.fts_rebuild.ok;
-  const scOk = d.selfcheck && d.selfcheck.ok;
+  const n = normalizeOneClickResult(__oneClickLast);
+  const pretty = JSON.stringify(n.raw, null, 2);
+
+  const mig = n.migrate;
+  const fts = n.fts;
+  const sc = n.selfcheck;
+
+  let overallOk = n.ok;
+  if (overallOk === null) {
+    const flags = [mig, fts, sc].filter(Boolean).map(x => x.ok);
+    if (flags.length) overallOk = flags.every(x => x === true);
+  }
+
+  const overall = overallOk === true
+    ? { text: "成功", tone: "good" }
+    : overallOk === false
+      ? { text: "失败", tone: "bad" }
+      : { text: "未知", tone: "neutral" };
+
+  const migL = stepLabel(mig);
+  const ftsL = stepLabel(fts);
+  const scL  = stepLabel(sc);
 
   const items = [
-    { label: "总状态", value: d.ok ? "OK" : "FAIL", tone: overallTone },
-    { label: "迁移(migrate)", value: migrateOk ? "OK" : (d.migrate ? "FAIL" : "—"), tone: migrateOk ? "good" : (d.migrate ? "bad" : "neutral") },
-    { label: "FTS 重建(rebuild)", value: ftsOk ? "OK" : (d.fts_rebuild ? "FAIL" : "—"), tone: ftsOk ? "good" : (d.fts_rebuild ? "bad" : "neutral") },
-    { label: "自检(selfcheck)", value: scOk ? "OK" : (d.selfcheck ? "FAIL" : "—"), tone: scOk ? "good" : (d.selfcheck ? "bad" : "neutral") },
+    { label: "总状态", value: overall.text, tone: overall.tone },
+    { label: "迁移(migrate)", value: migL.text, tone: migL.tone },
+    { label: "FTS 重建(rebuild)", value: ftsL.text, tone: ftsL.tone },
+    { label: "自检(selfcheck)", value: scL.text, tone: scL.tone },
   ];
 
-  // Extra signal rows (best-effort)
-  if (d.migrate) {
-    const before = d.migrate.before ?? "-";
-    const after = d.migrate.after ?? "-";
-    items.push({ label: "schema 版本", value: `${before} → ${after}`, tone: (before === after) ? "neutral" : "good" });
-    if (Array.isArray(d.migrate.pending) && d.migrate.pending.length) {
-      items.push({ label: "待迁移", value: `${d.migrate.pending.length} 项`, tone: "warn" });
+  // schema version hints (best-effort)
+  if (mig) {
+    const before = (mig.before ?? mig.current ?? mig.from ?? null);
+    const after  = (mig.after  ?? mig.latest  ?? mig.to   ?? null);
+    if (before !== null || after !== null) {
+      items.push({
+        label: "schema 版本",
+        value: `${before ?? "-"} → ${after ?? "-"}`,
+        tone: (before !== null && after !== null && before !== after) ? "good" : "neutral"
+      });
+    }
+    const pend = (mig.pending || mig.pending_before || mig.todo || null);
+    if (Array.isArray(pend) && pend.length) {
+      items.push({ label: "待迁移", value: `${pend.length} 项`, tone: "warn" });
     }
   }
-  if (d.selfcheck && d.selfcheck.fts) {
-    const cnt = d.selfcheck.fts.count ?? "-";
-    items.push({ label: "FTS 行数", value: String(cnt), tone: "neutral" });
+
+  // FTS / index signals from selfcheck
+  const scFts = (sc && (sc.fts || sc.fts_status)) ? (sc.fts || sc.fts_status) : null;
+  if (scFts) {
+    const cnt = (scFts.count ?? scFts.cnt ?? scFts.rows ?? null);
+    if (cnt !== null && cnt !== undefined) items.push({ label: "FTS 行数", value: String(cnt), tone: "neutral" });
+    const exists = scFts.exists;
+    if (exists === false) items.push({ label: "FTS 表", value: "不存在", tone: "bad" });
   }
-  if (d.selfcheck && d.selfcheck.indexes) {
-    const miss = d.selfcheck.indexes.missing || [];
-    items.push({ label: "索引缺失", value: miss.length ? `${miss.length} 个` : "无", tone: miss.length ? "warn" : "good" });
+  const idx = sc ? (sc.indexes || sc.index) : null;
+  if (idx) {
+    const miss = idx.missing || idx.missings || [];
+    if (Array.isArray(miss)) items.push({ label: "索引缺失", value: miss.length ? `${miss.length} 个` : "无", tone: miss.length ? "warn" : "good" });
   }
-  const dur = d.duration_ms ?? d.duration ?? d.took_ms ?? d.took;
-  items.push({ label: "耗时", value: formatMs(dur), tone: "neutral" });
+
+  items.push({ label: "耗时", value: n.duration ? formatMs(n.duration) : "未知", tone: "neutral" });
 
   showModalDetails({
     title: "一键初始化 / 自检 详情",
