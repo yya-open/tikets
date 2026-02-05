@@ -41,8 +41,7 @@ function splitSqlStatements(sql) {
     // Handle comments
     if (inLineComment) {
       cur += ch;
-      if (ch === "
-") inLineComment = false;
+      if (ch === "\n") inLineComment = false;
       i++;
       continue;
     }
