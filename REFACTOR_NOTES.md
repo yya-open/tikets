@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # P0 / P1 重构清单（已落代码）
 
 ## P0
@@ -17,3 +18,13 @@
 ## 这次明确没有做的
 - 没有新增审计日志 / 操作人记录。
 - 没有把前端彻底拆成多文件模块，仍保留单页结构，只做最小兼容调整。
+=======
+# Phase 3 notes
+
+- Frontend added modular helpers: `ticket-api.js`, `ticket-errors.js`, `ticket-filters.js`.
+- Added list filters for `department` and `name`.
+- `/api/tickets` now uses offset pagination only and no longer returns cursor navigation fields.
+- Import preview now includes per-field diff examples for updates/skips.
+- Unified frontend error mapping for auth, validation, conflict and not found errors.
+- Health build version: `phase3-modular-filters-diff`.
+>>>>>>> 2cfc828c8d2fb1c793bf59672e4a403ed7dd2d03

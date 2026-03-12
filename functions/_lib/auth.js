@@ -1,34 +1,23 @@
-import { errorResponse } from './http.js';
+import { jsonResponse } from "./http.js";
 
 export function getEditKeyFromRequest(request) {
-  return (
-    request.headers.get('x-edit-key') ||
-    request.headers.get('X-EDIT-KEY') ||
-    request.headers.get('x-editkey') ||
-    request.headers.get('X-Edit-Key') ||
-    ''
-  ).trim();
+  return request.headers.get("X-EDIT-KEY") || request.headers.get("x-edit-key") || "";
 }
 
 export function requireEditKey(request, env) {
-  const expected = String(env?.EDIT_KEY || '').trim();
+  const expected = String(env?.EDIT_KEY || "");
   if (!expected) {
-    return errorResponse('server_misconfigured', {
-      status: 500,
-      code: 'server_misconfigured',
-      extra: { hint: 'EDIT_KEY is not set' },
-    });
+    return jsonResponse(
+      { ok: false, error: "server_misconfigured", code: "server_misconfigured", message: "EDIT_KEY is not set" },
+      { status: 500, headers: { "cache-control": "no-store" } }
+    );
   }
-  const provided = getEditKeyFromRequest(request);
-  if (!provided) {
-    return errorResponse('missing_edit_key', {
-      status: 403,
-      code: 'missing_edit_key',
-      extra: { hint: 'Provide X-EDIT-KEY header. Query-string keys are no longer supported.' },
-    });
-  }
-  if (provided !== expected) {
-    return errorResponse('invalid_edit_key', { status: 403, code: 'invalid_edit_key' });
+  const provided = String(getEditKeyFromRequest(request) || "");
+  if (!provided || provided !== expected) {
+    return jsonResponse(
+      { ok: false, error: "invalid_edit_key", code: "invalid_edit_key" },
+      { status: 403, headers: { "cache-control": "no-store" } }
+    );
   }
   return null;
 }

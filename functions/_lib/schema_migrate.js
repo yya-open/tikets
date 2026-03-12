@@ -1,96 +1,34 @@
-const BASE_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS schema_migrations(
-  version INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS tickets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  date TEXT NOT NULL,
-  issue TEXT NOT NULL,
-  department TEXT,
-  name TEXT,
-  solution TEXT,
-  remarks TEXT,
-  type TEXT,
-  updated_at TEXT DEFAULT (datetime('now')),
-  updated_at_ts INTEGER DEFAULT 0,
-  is_deleted INTEGER DEFAULT 0,
-  deleted_at TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_date_id ON tickets(is_deleted, date DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_deletedat_id ON tickets(is_deleted, deleted_at DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
-`;
-
-const PERF_INDEX_SQL = `
-CREATE INDEX IF NOT EXISTS idx_tickets_active_updated
-ON tickets(is_deleted, updated_at_ts DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_active_date_id
-ON tickets(is_deleted, date DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_deleted
-ON tickets(is_deleted, deleted_at DESC, id DESC);
-`;
-
-const FTS_SQL = `
-CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(
-  issue, department, name, solution, remarks, type,
-  content='tickets', content_rowid='id',
-  tokenize='unicode61 remove_diacritics 2'
-);
-
-DROP TRIGGER IF EXISTS trg_tickets_fts_ai;
-DROP TRIGGER IF EXISTS trg_tickets_fts_ad;
-DROP TRIGGER IF EXISTS trg_tickets_fts_au;
-
-CREATE TRIGGER trg_tickets_fts_ai AFTER INSERT ON tickets BEGIN
-  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)
-  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);
-END;
-
-CREATE TRIGGER trg_tickets_fts_ad AFTER DELETE ON tickets BEGIN
-  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)
-  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);
-END;
-
-CREATE TRIGGER trg_tickets_fts_au AFTER UPDATE OF issue, department, name, solution, remarks, type ON tickets BEGIN
-  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)
-  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);
-
-  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)
-  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);
-END;
-
-INSERT INTO tickets_fts(tickets_fts) VALUES('rebuild');
-`;
-
-const MIGRATIONS = [
-  { version: 1, name: 'init base schema', sql: BASE_SCHEMA_SQL },
-  { version: 2, name: 'performance indexes', sql: PERF_INDEX_SQL },
-  { version: 3, name: 'fts5 tickets index + triggers', sql: FTS_SQL },
-];
+/**
+ * Simple schema migration manager for Cloudflare D1 (SQLite).
+ * - Stores applied versions in schema_migrations table.
+ * - Applies pending migrations in order.
+ *
+ * Usage: see /api/admin/migrate
+ */
 
 function splitSqlStatements(sql) {
-  const s = String(sql || '');
+  // Safe SQL splitter that keeps CREATE TRIGGER ... BEGIN ... END; blocks intact.
+  // It splits on semicolons that are NOT inside quotes/comments and NOT inside a BEGIN...END block.
+  const s = String(sql || "");
   const out = [];
-  let cur = '';
+  let cur = "";
   let i = 0;
-  let inS = false;
-  let inD = false;
+
+  let inS = false; // single quote
+  let inD = false; // double quote
   let inLineComment = false;
   let inBlockComment = false;
+
+  // BEGIN...END nesting (helps keep trigger bodies intact)
   let beginDepth = 0;
 
   function isWordChar(ch) {
     return /[A-Za-z0-9_]/.test(ch);
   }
   function readWordAt(pos) {
-    if (pos < 0 || pos >= s.length) return '';
-    if (!/[A-Za-z_]/.test(s[pos])) return '';
+    // read uppercased keyword at pos if starts with letter/underscore
+    if (pos < 0 || pos >= s.length) return "";
+    if (!/[A-Za-z_]/.test(s[pos])) return "";
     let j = pos;
     while (j < s.length && isWordChar(s[j])) j++;
     return s.slice(pos, j).toUpperCase();
@@ -98,16 +36,18 @@ function splitSqlStatements(sql) {
 
   while (i < s.length) {
     const ch = s[i];
-    const next = i + 1 < s.length ? s[i + 1] : '';
+    const next = i + 1 < s.length ? s[i + 1] : "";
+
+    // Handle comments
     if (inLineComment) {
       cur += ch;
-      if (ch === '\n') inLineComment = false;
+      if (ch === "\n") inLineComment = false;
       i++;
       continue;
     }
     if (inBlockComment) {
       cur += ch;
-      if (ch === '*' && next === '/') {
+      if (ch === "*" && next === "/") {
         cur += next;
         i += 2;
         inBlockComment = false;
@@ -116,21 +56,26 @@ function splitSqlStatements(sql) {
       i++;
       continue;
     }
+
+    // Start comments (only if not in quotes)
     if (!inS && !inD) {
-      if (ch === '-' && next === '-') {
+      if (ch === "-" && next === "-") {
         cur += ch + next;
         i += 2;
         inLineComment = true;
         continue;
       }
-      if (ch === '/' && next === '*') {
+      if (ch === "/" && next === "*") {
         cur += ch + next;
         i += 2;
         inBlockComment = true;
         continue;
       }
     }
-    if (!inD && ch === "'") {
+
+    // Handle quotes
+    if (!inD && ch === "'" ) {
+      // SQLite escapes single quote as ''
       cur += ch;
       if (inS && next === "'") {
         cur += next;
@@ -147,59 +92,128 @@ function splitSqlStatements(sql) {
       i++;
       continue;
     }
+
+    // Track BEGIN/END keywords when not in quotes
     if (!inS && !inD) {
-      const prev = i - 1 >= 0 ? s[i - 1] : '';
-      if (!isWordChar(prev) && /[A-Za-z_]/.test(ch)) {
+      const prev = i - 1 >= 0 ? s[i - 1] : "";
+      const atWordStart = !isWordChar(prev) && /[A-Za-z_]/.test(ch);
+      if (atWordStart) {
         const word = readWordAt(i);
-        if (word === 'BEGIN') beginDepth++;
-        else if (word === 'END' && beginDepth > 0) beginDepth--;
+        if (word === "BEGIN") {
+          beginDepth++;
+        } else if (word === "END") {
+          if (beginDepth > 0) beginDepth--;
+        }
       }
     }
-    if (!inS && !inD && beginDepth === 0 && ch === ';') {
+
+    // Split on semicolon if safe
+    if (!inS && !inD && beginDepth === 0 && ch === ";") {
       const stmt = cur.trim();
-      if (stmt) out.push(stmt + ';');
-      cur = '';
+      if (stmt) out.push(stmt + ";");
+      cur = "";
       i++;
       continue;
     }
+
     cur += ch;
     i++;
   }
+
   const tail = cur.trim();
-  if (tail) out.push(tail.endsWith(';') ? tail : `${tail};`);
+  if (tail) out.push(tail.endsWith(";") ? tail : (tail + ";"));
   return out;
 }
 
-async function ensureMigrationsTable(db) {
-  await db.prepare(`CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL DEFAULT (datetime('now')));`).run();
-}
+const MIGRATIONS = [
+  {
+    version: 1,
+    name: "initialize tickets schema",
+    sql: `
+      CREATE TABLE IF NOT EXISTS schema_migrations(
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  issue TEXT NOT NULL,
+  department TEXT,
+  name TEXT,
+  solution TEXT,
+  remarks TEXT,
+  type TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_at_ts INTEGER DEFAULT 0,
+  -- v2: recycle bin (soft delete)
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT
+);
+
+-- Helpful indexes for pagination & filtering
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_date_id ON tickets(is_deleted, date, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_deletedat_id ON tickets(is_deleted, deleted_at, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
+    `,
+  },
+  {
+    version: 2,
+    name: "performance indexes",
+    sql: "-- Performance indexes for ticket system (safe to run multiple times)\n-- Recommended for large datasets to keep list/stats queries fast.\n\nCREATE INDEX IF NOT EXISTS idx_tickets_active_updated\nON tickets(is_deleted, updated_at_ts DESC, id DESC);\n\nCREATE INDEX IF NOT EXISTS idx_tickets_active_date_id\nON tickets(is_deleted, date, id);\n\nCREATE INDEX IF NOT EXISTS idx_tickets_deleted\nON tickets(is_deleted, deleted_at DESC, id DESC);\n",
+  },
+  {
+    version: 3,
+    name: "fts5 tickets index + triggers",
+    sql: "-- Tickets Full-Text Search (FTS5) migration for Cloudflare D1 (SQLite)\n-- Creates tickets_fts virtual table + triggers to keep it in sync.\n-- Option 1 (recommended if it works in your D1): trigram tokenizer for substring-like search.\n--   If Option 1 fails (error about tokenizer/module), use Option 2 (unicode61).\n\n-- ============\n-- Option 1: trigram (best LIKE-like experience for Chinese/English substring search)\n-- ============\n-- CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(\n--   issue, department, name, solution, remarks, type,\n--   content='tickets', content_rowid='id',\n--   tokenize='trigram'\n-- );\n\n-- ============\n-- Option 2: unicode61 (safer compatibility; token-based, not substring)\n-- ============\nCREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(\n  issue, department, name, solution, remarks, type,\n  content='tickets', content_rowid='id',\n  tokenize='unicode61 remove_diacritics 2'\n);\n\n-- Keep FTS in sync with the base table.\nDROP TRIGGER IF EXISTS trg_tickets_fts_ai;\nDROP TRIGGER IF EXISTS trg_tickets_fts_ad;\nDROP TRIGGER IF EXISTS trg_tickets_fts_au;\n\nCREATE TRIGGER trg_tickets_fts_ai AFTER INSERT ON tickets BEGIN\n  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\n  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);\nEND;\n\nCREATE TRIGGER trg_tickets_fts_ad AFTER DELETE ON tickets BEGIN\n  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)\n  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);\nEND;\n\nCREATE TRIGGER trg_tickets_fts_au AFTER UPDATE OF issue, department, name, solution, remarks, type ON tickets BEGIN\n  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)\n  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);\n\n  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\n  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);\nEND;\n\n-- Backfill existing rows (safe to run multiple times after wiping the FTS index)\nINSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\nSELECT id, issue, department, name, solution, remarks, type\nFROM tickets\nWHERE id NOT IN (SELECT rowid FROM tickets_fts);\n",
+  },
+];
 
 export function latestSchemaVersion() {
   return MIGRATIONS[MIGRATIONS.length - 1].version;
 }
 
 export async function getCurrentSchemaVersion(db) {
-  await ensureMigrationsTable(db);
-  const row = await db.prepare('SELECT MAX(version) AS v FROM schema_migrations;').first();
+  // Ensure table exists (idempotent)
+  await db
+    .prepare(
+      "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL DEFAULT (datetime('now')));"
+    )
+    .run();
+
+  const row = await db.prepare("SELECT MAX(version) AS v FROM schema_migrations;").first();
   return row?.v ? Number(row.v) : 0;
 }
 
 export async function listPendingMigrations(db) {
-  const current = await getCurrentSchemaVersion(db);
-  return MIGRATIONS.filter((m) => m.version > current);
+  const cur = await getCurrentSchemaVersion(db);
+  return MIGRATIONS.filter((m) => m.version > cur);
 }
 
 export async function applyPendingMigrations(db) {
-  await ensureMigrationsTable(db);
+  // Ensure base schema exists first
+  const bootstrapStatements = splitSqlStatements(MIGRATIONS[0].sql);
+  if (bootstrapStatements.length) {
+    await db.batch(bootstrapStatements.map((s) => db.prepare(s)));
+  }
+
   const pending = await listPendingMigrations(db);
   const applied = [];
+
   for (const m of pending) {
-    const statements = splitSqlStatements(m.sql).map((stmt) => db.prepare(stmt));
-    if (statements.length) await db.batch(statements);
-    await db.prepare('INSERT INTO schema_migrations(version, name) VALUES(?, ?)').bind(m.version, m.name).run();
-    applied.push({ version: m.version, name: m.name, statements: statements.length });
+    const statements = splitSqlStatements(m.sql);
+    const stmts = statements.map((s) => db.prepare(s));
+    if (stmts.length) await db.batch(stmts);
+    const executed = stmts.length;
+
+    await db
+      .prepare("INSERT INTO schema_migrations(version, name) VALUES(?, ?);")
+      .bind(m.version, m.name)
+      .run();
+
+    applied.push({ version: m.version, name: m.name, statements: executed });
   }
+
   return { applied, latest: latestSchemaVersion() };
 }
-
-export { BASE_SCHEMA_SQL, PERF_INDEX_SQL, FTS_SQL };

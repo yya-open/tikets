@@ -11,6 +11,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script src="/assets/js/ticket-auth.js"></script>
+<script src="/assets/js/ticket-validation.js"></script>
+<script src="/assets/js/ticket-import-preview.js"></script>
+<script src="/assets/js/ticket-health.js"></script>
 <style>
     body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
     h1, h2, h3 { margin: 0 0 10px; }
@@ -538,7 +542,7 @@
       </summary>
 
       <div class="settings-desc">
-        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器。
+        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前会话。
       </div>
     </details>
 
@@ -563,6 +567,12 @@
       </div>
     </details>
   </div>
+</div>
+
+<div class="card">
+<h2>系统健康检查</h2>
+<div id="healthSummary" style="font-size:14px; margin-top:8px;">加载中...</div>
+<div style="font-size:12px; color:#8c8c8c; margin-top:6px;">只读检查：数据库连通性、schema 版本、FTS 与工单数量。</div>
 </div>
 
 <!-- 筛选 & 月份视图 & 导出 / 备份操作 -->
@@ -770,8 +780,8 @@
       <div class="key-help">
         <div>• 上次设置：<b><span id="editKeySetAt2">-</span></b></div>
         <div>• 读取（GET）公开；写入（POST/PUT/DELETE/导入覆盖云端）需要口令。</div>
-        <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，不会上传到云端。</div>
-        <div>• 如果口令输入错误，写操作会返回 403，并提示你重新设置。</div>
+        <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，关闭标签页后需要重新输入。</div>
+        <div>• 如果口令输入错误，写操作会返回 401，并提示你重新设置。</div>
       </div>
 
       <div class="key-actions">
@@ -833,28 +843,34 @@
 
 
     // ===== 写入口令（仅保护写操作）=====
-    const EDIT_KEY_STORAGE = "ticket_edit_key_session";
+    const EDIT_KEY_STORAGE = "ticket_edit_key";
 
     function getEditKey() {
+      if (window.TicketAuth && typeof window.TicketAuth.get === "function") return window.TicketAuth.get();
       try { return sessionStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKey(key) {
+      if (window.TicketAuth && typeof window.TicketAuth.set === "function") return window.TicketAuth.set(key);
       try { sessionStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
     }
     function clearEditKey() {
+      if (window.TicketAuth && typeof window.TicketAuth.clear === "function") return window.TicketAuth.clear();
       try { sessionStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
     }
     
 
-    const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at_session";
+    const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
 
     function getEditKeySetAt() {
+      if (window.TicketAuth && typeof window.TicketAuth.getSetAt === "function") return window.TicketAuth.getSetAt();
       try { return sessionStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKeySetAtNow() {
+      if (window.TicketAuth && typeof window.TicketAuth.setSetAtNow === "function") return window.TicketAuth.setSetAtNow();
       try { sessionStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
     }
     function clearEditKeySetAt() {
+      if (window.TicketAuth && typeof window.TicketAuth.clearSetAt === "function") return window.TicketAuth.clearSetAt();
       try { sessionStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
     }
 
@@ -946,7 +962,7 @@
       setEditKeySetAtNow();
       updateEditKeyStatus();
       resolveEditKeyWaiters(key);
-      if (typeof showToast === "function") showToast("写入口令已保存（仅当前会话）。", "success");
+      if (typeof showToast === "function") showToast("写入口令已保存（仅当前浏览器）。", "success");
     }
 
     function clearEditKeyFromUI() {
@@ -987,11 +1003,11 @@
         });
         if (res.ok) {
           if (typeof showToast === "function") showToast("口令测试通过 ✅", "success");
-        } else if (res.status === 401 || res.status === 403) {
+        } else if (res.status === 401) {
           clearEditKey();
           clearEditKeySetAt();
           updateEditKeyStatus();
-          if (typeof showToast === "function") showToast("口令错误（403），请重新设置。", "error");
+          if (typeof showToast === "function") showToast("口令错误（401），请重新设置。", "error");
           openKeyModal();
         } else if (res.status === 500) {
           if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY（500）。", "error");
@@ -1524,7 +1540,7 @@ async function runOneClickInit() {
 	    // 用于 catch 中判断：401（口令错误）已经在 authedFetch 里提示过了，就不再显示通用错误 toast。
 	    function isNoKeyError(err) {
 	      const msg = String((err && err.message) || err || "");
-	      return /\b401\b/.test(msg) || /\b403\b/.test(msg) || /Unauthorized|invalid_edit_key|missing_edit_key/i.test(msg);
+	      return /\b401\b/.test(msg) || /Unauthorized/i.test(msg);
 	    }
     
 
@@ -1595,9 +1611,9 @@ let pageSize = 100;     // 可选更小，但上限 100
 let currentPage = 1;
 
 // ===== Keyset 游标分页（用于“上一页/下一页”更快；页码跳转仍走 OFFSET） =====
-let cursorNav = null; // 已弃用：保留变量仅为兼容旧 UI 逻辑
-let cursorKey = "";
-const pageCursorMap = new Map();
+let cursorNav = null; // { cursor: string, direction: 'next'|'prev' }
+let cursorKey = "";   // 当前筛选 + viewMode + pageSize
+const pageCursorMap = new Map(); // page -> { next_cursor, prev_cursor }
 
 // ===== 服务端分页（大数据量） =====
 let serverTotal = 0;          // 当前筛选下的总条数（用于分页 UI）
@@ -1877,7 +1893,7 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       // 仅用于：年/月可用性与总量展示（不受筛选影响）
       const sp = new URLSearchParams();
       if (viewMode === "trash") sp.set("trash", "1");
-      const res = await fetch(`/api/stats?${sp.toString()}`);
+      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`meta stats failed: ${res.status}`);
       const j = await res.json();
       metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
@@ -1889,7 +1905,13 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       sp.set("page", String(currentPage));
       sp.set("pageSize", String(pageSize));
 
-      const res = await authedFetch(`/api/tickets?${sp.toString()}`);
+      // 游标分页：仅用于“上一页/下一页”顺序翻页。
+      if (cursorNav && cursorNav.cursor) {
+        sp.set("cursor", cursorNav.cursor);
+        sp.set("direction", cursorNav.direction || "next");
+      }
+
+      const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
       const j = await res.json();
 
@@ -1903,7 +1925,15 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       if (Number.isFinite(ps) && ps > 0) pageSize = Math.min(ps, PAGE_SIZE_MAX);
       if (Number.isFinite(p) && p > 0) currentPage = p;
 
-      pageCursorMap.clear();
+      // 记录本页游标，用于更快的 prev/next
+      if (j && (j.next_cursor || j.prev_cursor)) {
+        pageCursorMap.set(currentPage, {
+          next_cursor: j.next_cursor || null,
+          prev_cursor: j.prev_cursor || null,
+        });
+      }
+
+      // 本次游标导航只生效一次
       cursorNav = null;
     }
 
@@ -1913,7 +1943,7 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       lastStatsKey = key;
 
       const sp = buildFilters({ includeYearMonth: true });
-      const res = await fetch(`/api/stats?${sp.toString()}`);
+      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`stats failed: ${res.status}`);
       cachedStats = await res.json();
       return cachedStats;
@@ -1947,12 +1977,12 @@ async function addOrUpdateRecord() {
   const remarks = document.getElementById("remarks").value.trim();
   const type = document.getElementById("type").value;
 
-  if (!date || !issue) {
-    showToast("请至少填写日期和问题！", "warning");
+  const payload = { date, issue, department, name, solution, remarks, type };
+  const checked = window.TicketValidation ? window.TicketValidation.validateTicketForm(payload) : { ok: !!date && !!issue, errors: [] };
+  if (!checked.ok) {
+    showToast((window.TicketValidation ? window.TicketValidation.render(checked.errors) : "请至少填写日期和问题！"), "warning");
     return;
   }
-
-  const payload = { date, issue, department, name, solution, remarks, type };
 
   const btn = document.getElementById("submitBtn");
   const oldText = btn ? btn.innerText : "";
@@ -2296,7 +2326,12 @@ function renderPagination(totalItems) {
   const prevBtn = mkBtn("上一页", {
     disabled: currentPage <= 1 || totalItems === 0,
     onClick: () => {
-      cursorNav = null;
+      const c = pageCursorMap.get(currentPage);
+      if (c && c.prev_cursor) {
+        cursorNav = { cursor: c.prev_cursor, direction: "prev" };
+      } else {
+        cursorNav = null;
+      }
       currentPage -= 1;
       renderTable({ resetPage: false });
     }
@@ -2304,7 +2339,12 @@ function renderPagination(totalItems) {
   const nextBtn = mkBtn("下一页", {
     disabled: currentPage >= totalPages || totalItems === 0,
     onClick: () => {
-      cursorNav = null;
+      const c = pageCursorMap.get(currentPage);
+      if (c && c.next_cursor) {
+        cursorNav = { cursor: c.next_cursor, direction: "next" };
+      } else {
+        cursorNav = null;
+      }
       currentPage += 1;
       renderTable({ resetPage: false });
     }
@@ -2751,7 +2791,7 @@ tooltip: {
 
       while (page <= maxPages) {
         sp.set("page", String(page));
-        const res = await authedFetch(`/api/tickets?${sp.toString()}`);
+        const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`export load failed: ${res.status}`);
         const j = await res.json();
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
@@ -2966,22 +3006,7 @@ function loadBackup(event) {
         const preview = await previewRes.json();
         const t = preview && preview.totals ? preview.totals : null;
 
-        const msg =
-          (t
-            ? `预演结果：
-
-` +
-              `- 新增：${t.inserts} 条
-` +
-              `- 更新：${t.updates} 条（仅备份更晚才覆盖）
-` +
-              `- 跳过：${t.skips} 条（其中云端更新更晚/相等：${t.skipped_newer_or_equal} 条）
-` +
-              `- 输入：${t.incoming} 条（active ${t.active} / trash ${t.trash}）
-`
-	            : "无法获取预演统计。\n") +
-          `
-是否应用该导入？（不会清空云端）`;
+        const msg = window.TicketImportPreview ? window.TicketImportPreview.format(preview) : `预演结果：新增 ${t?.inserts || 0} 条，更新 ${t?.updates || 0} 条，跳过 ${t?.skips || 0} 条。`;
 
         const apply = await showConfirm({
           title: "导入预演（安全合并）",
@@ -3144,6 +3169,7 @@ function loadBackup(event) {
     
 (async function init() {
   try { updateEditKeyStatus(); } catch (e) {}
+  try { if (window.TicketHealth) { const health = await window.TicketHealth.load(); window.TicketHealth.render(health); } } catch (e) { console.warn(e); if (window.TicketHealth) window.TicketHealth.render({ ok:false }); }
 
   // 先恢复月份视图（只影响筛选/显示，不影响数据源）
   loadViewState();
