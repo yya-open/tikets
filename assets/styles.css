@@ -1,0 +1,78 @@
+
+.accordion-container {
+  margin: 20px;
+}
+
+.accordion {
+  background-color: #f1f1f1;
+  color: #444;
+  cursor: pointer;
+  padding: 12px;
+  width: 100%;
+  border: none;
+  text-align: left;
+  outline: none;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+}
+
+.accordion:hover {
+  background-color: #ddd;
+}
+
+.panel-content {
+  padding: 0 18px;
+  display: none;
+  overflow: hidden;
+  background-color: #f9f9f9;
+}
+
+.panel-content p {
+  margin: 10px 0;
+}
+
+.export-btn {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  margin: 5px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.export-btn:hover {
+  background-color: #45a049;
+}
+
+/* 自适应布局 */
+@media (max-width: 768px) {
+  .accordion {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .panel-content {
+    padding: 10px;
+  }
+
+  .export-btn {
+    width: 100%;
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .accordion {
+    font-size: 12px;
+    padding: 8px;
+  }
+
+  .panel-content {
+    padding: 8px;
+  }
+
+  .export-btn {
+    font-size: 12px;
+  }
+}

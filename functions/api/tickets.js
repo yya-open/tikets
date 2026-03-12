@@ -1,3 +1,7 @@
+import { requireEditKey } from "../_lib/auth.js";
+import { jsonResponse, respondCachedJson } from "../_lib/http.js";
+import { validateTicketPayload } from "../_lib/validation.js";
+
 /**
  * GET  /api/tickets
  *
@@ -19,68 +23,6 @@
  *
  * D1 binding name: DB
  */
-
-function jsonResponse(data, { status = 200, headers = {} } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=UTF-8",
-      "cache-control": "no-store",
-      ...headers,
-    },
-  });
-}
-
-async function sha256Hex(input) {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));
-  const bytes = new Uint8Array(buf);
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, "0");
-  }
-  return hex;
-}
-
-async function respondCachedJson(request, payload, { maxAge = 30, status = 200 } = {}) {
-  const body = JSON.stringify(payload);
-  const etag = `W/"${await sha256Hex(body)}"`;
-
-  const headers = {
-    "content-type": "application/json; charset=UTF-8",
-    "cache-control": `public, max-age=${Math.max(0, Math.trunc(maxAge))}`,
-    etag,
-    vary: "accept-encoding",
-  };
-
-  const inm = request.headers.get("if-none-match") || request.headers.get("If-None-Match") || "";
-  if (inm === etag) {
-    return new Response(null, { status: 304, headers });
-  }
-  return new Response(body, { status, headers });
-}
-
-function getEditKeyFromRequest(request) {
-  const url = new URL(request.url);
-  return (
-    request.headers.get("X-EDIT-KEY") ||
-    request.headers.get("x-edit-key") ||
-    url.searchParams.get("key") ||
-    ""
-  );
-}
-
-function requireEditKey(request, env) {
-  const expected = String(env.EDIT_KEY || "");
-  if (!expected) {
-    return new Response("Server misconfigured: EDIT_KEY is not set", { status: 500 });
-  }
-  const provided = getEditKeyFromRequest(request);
-  if (provided !== expected) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  return null;
-}
 
 function clampInt(n, { min = 1, max = 1000000, fallback = 1 } = {}) {
   const v = Number(n);
@@ -432,32 +374,20 @@ export async function onRequestPost({ request, env }) {
   try {
     body = await request.json();
   } catch {
-    return jsonResponse({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const date = String(body?.date ?? "").trim();
-  const issue = String(body?.issue ?? "").trim();
-  if (!date || !issue) {
-    return jsonResponse({ ok: false, error: "date & issue required" }, { status: 400 });
+  const checked = validateTicketPayload(body);
+  if (!checked.ok) {
+    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: checked.errors }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const department = String(body?.department ?? "");
-  const name = String(body?.name ?? "");
-  const solution = String(body?.solution ?? "");
-  const remarks = String(body?.remarks ?? "");
-  const type = String(body?.type ?? "");
-
+  const { date, issue, department, name, solution, remarks, type } = checked.data;
   const nowTs = Date.now();
 
-  // Ensure the column exists (safe no-op if it already exists)
+  let result;
   try {
-    await env.DB.prepare(`ALTER TABLE tickets ADD COLUMN updated_at_ts INTEGER`).run();
-  } catch (_) {}
-
-  // Insert with explicit updated_at_ts (direction A). If this fails, return the real error instead of silently falling back.
-  let r;
-  try {
-    r = await env.DB
+    result = await env.DB
       .prepare(
         `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
@@ -465,28 +395,10 @@ export async function onRequestPost({ request, env }) {
       .bind(date, issue, department, name, solution, remarks, type, nowTs)
       .run();
   } catch (e) {
-    return jsonResponse(
-      { ok: false, error: "insert_failed", detail: String(e?.message || e) },
-      { status: 500 }
-    );
+    return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: String(e?.message || e) }, { status: 500, headers: { "cache-control": "no-store" } });
   }
 
-  const id = r?.meta?.last_row_id ?? null;
-
-  // Hard guarantee: if for any reason the inserted row still has NULL/0, backfill just that row.
-  if (id != null) {
-    try {
-      await env.DB
-        .prepare(`UPDATE tickets SET updated_at_ts=? WHERE id=? AND (updated_at_ts IS NULL OR updated_at_ts=0)`)
-        .bind(nowTs, id)
-        .run();
-    } catch (_) {}
-  }
-
-  return jsonResponse(
-    { ok: true, id, updated_at_ts: nowTs, post_build: "directionA-ts-20260204" },
-    { status: 201 }
-  );
+  return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201, headers: { "cache-control": "no-store" } });
 }
 
 function isCacheableGet(request) {

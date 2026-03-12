@@ -11,6 +11,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script src="/assets/js/ticket-auth.js"></script>
+<script src="/assets/js/ticket-validation.js"></script>
+<script src="/assets/js/ticket-import-preview.js"></script>
+<script src="/assets/js/ticket-health.js"></script>
 <style>
     body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
     h1, h2, h3 { margin: 0 0 10px; }
@@ -538,7 +542,7 @@
       </summary>
 
       <div class="settings-desc">
-        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器。
+        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前会话。
       </div>
     </details>
 
@@ -563,6 +567,12 @@
       </div>
     </details>
   </div>
+</div>
+
+<div class="card">
+<h2>系统健康检查</h2>
+<div id="healthSummary" style="font-size:14px; margin-top:8px;">加载中...</div>
+<div style="font-size:12px; color:#8c8c8c; margin-top:6px;">只读检查：数据库连通性、schema 版本、FTS 与工单数量。</div>
 </div>
 
 <!-- 筛选 & 月份视图 & 导出 / 备份操作 -->
@@ -770,7 +780,7 @@
       <div class="key-help">
         <div>• 上次设置：<b><span id="editKeySetAt2">-</span></b></div>
         <div>• 读取（GET）公开；写入（POST/PUT/DELETE/导入覆盖云端）需要口令。</div>
-        <div>• 口令仅保存在<b>当前浏览器</b>的 localStorage，不会上传到云端。</div>
+        <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，关闭标签页后需要重新输入。</div>
         <div>• 如果口令输入错误，写操作会返回 401，并提示你重新设置。</div>
       </div>
 
@@ -836,26 +846,32 @@
     const EDIT_KEY_STORAGE = "ticket_edit_key";
 
     function getEditKey() {
-      try { return localStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
+      if (window.TicketAuth && typeof window.TicketAuth.get === "function") return window.TicketAuth.get();
+      try { return sessionStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKey(key) {
-      try { localStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.set === "function") return window.TicketAuth.set(key);
+      try { sessionStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
     }
     function clearEditKey() {
-      try { localStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.clear === "function") return window.TicketAuth.clear();
+      try { sessionStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
     }
     
 
     const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
 
     function getEditKeySetAt() {
-      try { return localStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
+      if (window.TicketAuth && typeof window.TicketAuth.getSetAt === "function") return window.TicketAuth.getSetAt();
+      try { return sessionStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKeySetAtNow() {
-      try { localStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.setSetAtNow === "function") return window.TicketAuth.setSetAtNow();
+      try { sessionStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
     }
     function clearEditKeySetAt() {
-      try { localStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.clearSetAt === "function") return window.TicketAuth.clearSetAt();
+      try { sessionStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
     }
 
     function formatISOToLocal(iso) {
@@ -1502,7 +1518,7 @@ async function runOneClickInit() {
 
 	      const res = await fetch(url, { ...options, headers });
 
-	      if (res.status === 401) {
+	      if (res.status === 401 || res.status === 403) {
 	        clearEditKey();
 	        updateEditKeyStatus();
 	        if (typeof showToast === "function") showToast("写入口令错误，请重新输入。", "error");
@@ -1961,12 +1977,12 @@ async function addOrUpdateRecord() {
   const remarks = document.getElementById("remarks").value.trim();
   const type = document.getElementById("type").value;
 
-  if (!date || !issue) {
-    showToast("请至少填写日期和问题！", "warning");
+  const payload = { date, issue, department, name, solution, remarks, type };
+  const checked = window.TicketValidation ? window.TicketValidation.validateTicketForm(payload) : { ok: !!date && !!issue, errors: [] };
+  if (!checked.ok) {
+    showToast((window.TicketValidation ? window.TicketValidation.render(checked.errors) : "请至少填写日期和问题！"), "warning");
     return;
   }
-
-  const payload = { date, issue, department, name, solution, remarks, type };
 
   const btn = document.getElementById("submitBtn");
   const oldText = btn ? btn.innerText : "";
@@ -2990,22 +3006,7 @@ function loadBackup(event) {
         const preview = await previewRes.json();
         const t = preview && preview.totals ? preview.totals : null;
 
-        const msg =
-          (t
-            ? `预演结果：
-
-` +
-              `- 新增：${t.inserts} 条
-` +
-              `- 更新：${t.updates} 条（仅备份更晚才覆盖）
-` +
-              `- 跳过：${t.skips} 条（其中云端更新更晚/相等：${t.skipped_newer_or_equal} 条）
-` +
-              `- 输入：${t.incoming} 条（active ${t.active} / trash ${t.trash}）
-`
-	            : "无法获取预演统计。\n") +
-          `
-是否应用该导入？（不会清空云端）`;
+        const msg = window.TicketImportPreview ? window.TicketImportPreview.format(preview) : `预演结果：新增 ${t?.inserts || 0} 条，更新 ${t?.updates || 0} 条，跳过 ${t?.skips || 0} 条。`;
 
         const apply = await showConfirm({
           title: "导入预演（安全合并）",
@@ -3168,6 +3169,7 @@ function loadBackup(event) {
     
 (async function init() {
   try { updateEditKeyStatus(); } catch (e) {}
+  try { if (window.TicketHealth) { const health = await window.TicketHealth.load(); window.TicketHealth.render(health); } } catch (e) { console.warn(e); if (window.TicketHealth) window.TicketHealth.render({ ok:false }); }
 
   // 先恢复月份视图（只影响筛选/显示，不影响数据源）
   loadViewState();
