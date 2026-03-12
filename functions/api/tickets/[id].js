@@ -1,42 +1,13 @@
+import { requireEditKey } from "../../_lib/auth.js";
+import { jsonResponse } from "../../_lib/http.js";
+import { validateTicketPayload } from "../../_lib/validation.js";
+
 /**
  * PUT    /api/tickets/:id  -> update ticket (optimistic concurrency via updated_at)
  * DELETE /api/tickets/:id  -> soft delete (move to recycle bin)
  *
  * D1 binding name: DB
  */
-function jsonResponse(data, { status = 200, headers = {} } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=UTF-8",
-      "cache-control": "no-store",
-      ...headers,
-    },
-  });
-}
-
-function getEditKeyFromRequest(request) {
-  const url = new URL(request.url);
-  return (
-    request.headers.get("X-EDIT-KEY") ||
-    request.headers.get("x-edit-key") ||
-    url.searchParams.get("key") ||
-    ""
-  );
-}
-
-function requireEditKey(request, env) {
-  const expected = String(env.EDIT_KEY || "");
-  if (!expected) {
-    return new Response("Server misconfigured: EDIT_KEY is not set", { status: 500 });
-  }
-  const provided = getEditKeyFromRequest(request);
-  if (provided !== expected) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  return null;
-}
-
 function parseId(raw) {
   const id = Number(raw);
   return Number.isFinite(id) ? id : null;
@@ -66,19 +37,12 @@ export async function onRequestPut({ params, request, env }) {
     return jsonResponse({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
-  const date = String(body?.date ?? "").trim();
-  const issue = String(body?.issue ?? "").trim();
-  if (!date || !issue) {
-    return jsonResponse({ ok: false, error: "date & issue required" }, { status: 400 });
+  const checked = validateTicketPayload(body, { requireVersion: true });
+  if (!checked.ok) {
+    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: checked.errors }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const department = String(body?.department ?? "");
-  const name = String(body?.name ?? "");
-  const solution = String(body?.solution ?? "");
-  const remarks = String(body?.remarks ?? "");
-  const type = String(body?.type ?? "");
-
-  const force = !!body?.force;
+  const { date, issue, department, name, solution, remarks, type, force } = checked.data;
 
   // Prefer updated_at_ts (integer timestamp) for optimistic concurrency.
   // Keep updated_at string for backward compatibility.
@@ -111,7 +75,7 @@ export async function onRequestPut({ params, request, env }) {
   if (!force && !hasClientTs && !clientUpdatedAt) {
     return jsonResponse(
       { ok: false, error: "missing_version", hint: "send updated_at_ts (preferred) or updated_at for concurrency control" },
-      { status: 400 }
+      { status: 400, headers: { "cache-control": "no-store" } }
     );
   }
 
