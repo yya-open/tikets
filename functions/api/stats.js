@@ -110,8 +110,6 @@ async function handleGet({ request, env }) {
   const from = normalizeDateParam(url.searchParams.get("from"));
   const to = normalizeDateParam(url.searchParams.get("to"));
   const type = normalizeTextParam(url.searchParams.get("type"));
-  const department = normalizeTextParam(url.searchParams.get("department"));
-  const name = normalizeTextParam(url.searchParams.get("name"));
   const qRaw = normalizeTextParam(url.searchParams.get("q"));
   const q = qRaw.length > 120 ? qRaw.slice(0, 120) : qRaw;
 
@@ -134,14 +132,6 @@ async function handleGet({ request, env }) {
   if (type) {
     where.push("type = ?");
     binds.push(type);
-  }
-  if (department) {
-    where.push("department LIKE ?");
-    binds.push(`%${department}%`);
-  }
-  if (name) {
-    where.push("name LIKE ?");
-    binds.push(`%${name}%`);
   }
   const ftsQuery = q ? buildFtsQuery(q) : "";
   const wantFts = Boolean(ftsQuery);
@@ -226,8 +216,6 @@ async function handleGet({ request, env }) {
       if (from) { whereLike.push('date >= ?'); bindsLike.push(from); }
       if (to) { whereLike.push('date <= ?'); bindsLike.push(to); }
       if (type) { whereLike.push('type = ?'); bindsLike.push(type); }
-      if (department) { whereLike.push('department LIKE ?'); bindsLike.push(`%${department}%`); }
-      if (name) { whereLike.push('name LIKE ?'); bindsLike.push(`%${name}%`); }
       if (q) {
         const like = `%${q}%`;
         whereLike.push(`(
