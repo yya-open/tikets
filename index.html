@@ -504,47 +504,6 @@
 </style>
 </head>
 <body>
-    <div class='container'>
-        <div class='panel'>
-            <div class='panel-header collapsible' onclick='togglePanel('panel1')'>系统设置</div>
-            <div class='panel-content' id='panel1'>
-                <p>只允许管理员可操作，普通用户只能查看相关内容。</p>
-                <label for='env'>环境选择：</label>
-                <select id='env'>
-                    <option value='prod'>生产环境</option>
-                    <option value='dev'>开发环境</option>
-                    <option value='test'>测试环境</option>
-                </select>
-                <button>应用环境</button>
-            </div>
-        </div>
-        <div class='panel'>
-            <div class='panel-header collapsible' onclick='togglePanel('panel2')'>系统健康检查</div>
-            <div class='panel-content' id='panel2'>
-                <p>Schema 3/3 环境正在运行。</p>
-                <button>查看健康状态</button>
-            </div>
-        </div>
-        <div class='panel'>
-            <div class='panel-header collapsible' onclick='togglePanel('panel3')'>查询/导出与备份</div>
-            <div class='panel-content' id='panel3'>
-                <label for='start-date'>开始日期：</label>
-                <input type='date' id='start-date'>
-                <label for='end-date'>结束日期：</label>
-                <input type='date' id='end-date'>
-                <label for='type'>类型：</label>
-                <select id='type'>
-                    <option value='all'>全部类型</option>
-                    <option value='xls'>Excel 类型</option>
-                    <option value='json'>JSON 类型</option>
-                </select>
-                <button>导出 XLSX</button>
-                <button>导出 JSON</button>
-                <button>压缩 ZIP (包含所有 JSON)</button>
-            </div>
-        </div>
-    </div>
-
 <h1>工单记录系统</h1>
 <div class="card">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
