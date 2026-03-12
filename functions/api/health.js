@@ -17,7 +17,7 @@ export async function onRequestGet({ request, env }) {
       schema: { current: await getCurrentSchemaVersion(env.DB), latest: latestSchemaVersion() },
       fts: { exists: await tableExists(env.DB, "tickets_fts") },
       counts: { tickets: Number(ticketCount?.c ?? 0) || 0, deleted: Number(deletedCount?.c ?? 0) || 0 },
-      build: { version: "phase2-ui-health-validation" },
+      build: { version: "phase3-modular-filters-diff" },
     };
     return respondCachedJson(request, payload, { maxAge: 15 });
   } catch (e) {

@@ -77,13 +77,18 @@ export async function fetchExistingMap(env, ids) {
   for (let i = 0; i < uniq.length; i += CHUNK) {
     const chunk = uniq.slice(i, i + CHUNK);
     const placeholders = chunk.map(() => "?").join(",");
-    const sql = `SELECT id, date, issue, updated_at, updated_at_ts, is_deleted FROM tickets WHERE id IN (${placeholders})`;
+    const sql = `SELECT id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted FROM tickets WHERE id IN (${placeholders})`;
     const { results } = await env.DB.prepare(sql).bind(...chunk).all();
     for (const row of results || []) {
       map.set(Number(row.id), {
         id: Number(row.id),
         date: String(row.date || ""),
         issue: String(row.issue || ""),
+        department: String(row.department || ""),
+        name: String(row.name || ""),
+        solution: String(row.solution || ""),
+        remarks: String(row.remarks || ""),
+        type: String(row.type || ""),
         updated_at: String(row.updated_at || "").trim(),
         updated_at_ts: Number(row.updated_at_ts ?? 0) || 0,
         is_deleted: Number(row.is_deleted ?? 0) ? 1 : 0,
@@ -99,6 +104,26 @@ export function summarizeImport(incoming) {
     else acc.active += 1;
     return acc;
   }, { active: 0, trash: 0 });
+}
+
+function diffFields(existing, incoming) {
+  const fields = [
+    ["date", "日期"],
+    ["issue", "问题"],
+    ["department", "部门"],
+    ["name", "姓名"],
+    ["solution", "处理方法"],
+    ["remarks", "备注"],
+    ["type", "类型"],
+    ["is_deleted", "是否删除"],
+  ];
+  const changes = [];
+  for (const [field, label] of fields) {
+    const from = String(existing?.[field] ?? "");
+    const to = String(incoming?.[field] ?? "");
+    if (from !== to) changes.push({ field: label, from, to });
+  }
+  return changes;
 }
 
 export function diffImport(existingMap, incoming) {
@@ -121,6 +146,7 @@ export function diffImport(existingMap, incoming) {
     const existingTs = Number(existing.updated_at_ts || 0);
     const newerByTs = incomingTs > 0 && existingTs >= 0 && incomingTs > existingTs;
     const newerByText = incomingTs === 0 && row.updated_at && row.updated_at > (existing.updated_at || "");
+    const changes = diffFields(existing, row);
     if (newerByTs || newerByText) {
       details.updates.push({
         id: row.id,
@@ -129,6 +155,7 @@ export function diffImport(existingMap, incoming) {
         reason: "备份版本更新更晚，将覆盖云端记录",
         server_updated_at: existing.updated_at,
         incoming_updated_at: row.updated_at,
+        changes,
       });
     } else {
       details.skips.push({
@@ -138,6 +165,7 @@ export function diffImport(existingMap, incoming) {
         reason: "云端版本更新更晚或相同，已保护跳过",
         server_updated_at: existing.updated_at,
         incoming_updated_at: row.updated_at,
+        changes,
       });
     }
   }
@@ -165,6 +193,7 @@ export function pickExamples(details, limit = 8) {
     reason: row.reason,
     server_updated_at: row.server_updated_at,
     incoming_updated_at: row.incoming_updated_at,
+    changes: Array.isArray(row.changes) ? row.changes.slice(0, 6) : [],
   });
   return {
     inserts: details.inserts.slice(0, limit).map(slim),
