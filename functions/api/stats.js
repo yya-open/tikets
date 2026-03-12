@@ -1,399 +1,139 @@
-/**
- * GET /api/stats
- *
- * Query:
- *   - trash=1
- *   - from=YYYY-MM-DD
- *   - to=YYYY-MM-DD
- *   - type=xxx
- *   - q=keyword
- *
- * Response (all numbers):
- *   {
- *     trash: 0|1,
- *     total_all: number,
- *     total_filtered: number,
- *     type_counts: { [type: string]: number },
- *     month_counts: { [yyyy-MM: string]: number }
- *   }
- *
- * D1 binding name: DB
- */
+import { errorResponse, isPublicGetRequest, respondCachedJson } from '../_lib/http.js';
 
-function jsonResponse(data, { status = 200, headers = {} } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=UTF-8",
-      "cache-control": "no-store",
-      ...headers,
-    },
-  });
+const FTS_FIELDS = ['issue', 'department', 'name', 'solution', 'remarks', 'type'];
+
+function normalizeDate(v) {
+  const s = String(v || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
 }
 
-async function sha256Hex(input) {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));
-  const bytes = new Uint8Array(buf);
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, "0");
-  }
-  return hex;
+function normalizeText(v, max = 120) {
+  return String(v ?? '').trim().slice(0, max);
 }
-
-async function respondCachedJson(request, payload, { maxAge = 60, status = 200 } = {}) {
-  const body = JSON.stringify(payload);
-  const etag = `W/"${await sha256Hex(body)}"`;
-
-  const headers = {
-    "content-type": "application/json; charset=UTF-8",
-    "cache-control": `public, max-age=${Math.max(0, Math.trunc(maxAge))}`,
-    etag,
-    vary: "accept-encoding",
-  };
-
-  const inm = request.headers.get("if-none-match") || request.headers.get("If-None-Match") || "";
-  if (inm === etag) {
-    return new Response(null, { status: 304, headers });
-  }
-  return new Response(body, { status, headers });
-}
-
-function normalizeDateParam(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-  return s;
-}
-
-function normalizeTextParam(raw) {
-  return String(raw ?? "").trim();
-}
-
-
-const FTS_FIELDS = ["issue", "department", "name", "solution", "remarks", "type"];
 
 function escapeFtsPhrase(s) {
-  // Wrap as a phrase and escape quotes for FTS5.
-  return `"${String(s ?? "").replace(/"/g, '""')}"`;
+  return `"${String(s ?? '').replace(/"/g, '""')}"`;
 }
 
 function buildFtsQuery(q) {
-  // Conservative multi-field FTS query:
-  // - Split by whitespace into terms
-  // - For each term: (issue:"term" OR department:"term" OR ...)
-  // - AND terms together
-  const tokens = String(q || "")
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-  if (!tokens.length) return "";
-
-  const perToken = tokens.map((tok) => {
-    const phrase = escapeFtsPhrase(tok);
-    const ors = FTS_FIELDS.map((f) => `${f}:${phrase}`).join(" OR ");
-    return `(${ors})`;
-  });
-
-  return perToken.join(" AND ");
+  const tokens = String(q || '').trim().split(/\s+/).map((t) => t.trim()).filter(Boolean).slice(0, 12);
+  if (!tokens.length) return '';
+  return tokens.map((tok) => `(${FTS_FIELDS.map((f) => `${f}:${escapeFtsPhrase(tok)}`).join(' OR ')})`).join(' AND ');
 }
 
+function buildFilters(url) {
+  return {
+    trash: ['1', 'true', 'yes'].includes(String(url.searchParams.get('trash') || '').toLowerCase()),
+    from: normalizeDate(url.searchParams.get('from')),
+    to: normalizeDate(url.searchParams.get('to')),
+    type: normalizeText(url.searchParams.get('type'), 80),
+    q: normalizeText(url.searchParams.get('q'), 120),
+  };
+}
 
-
-async function handleGet({ request, env }) {
-  const url = new URL(request.url);
-  const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
-
-  const from = normalizeDateParam(url.searchParams.get("from"));
-  const to = normalizeDateParam(url.searchParams.get("to"));
-  const type = normalizeTextParam(url.searchParams.get("type"));
-  const qRaw = normalizeTextParam(url.searchParams.get("q"));
-  const q = qRaw.length > 120 ? qRaw.slice(0, 120) : qRaw;
-
-  // base condition (new schema)
-  const baseWhere = ["is_deleted=?"];
-  const baseBinds = [trash ? 1 : 0];
-
-  // filtered condition
-  const where = ["is_deleted=?"];
-  const binds = [trash ? 1 : 0];
-
-  if (from) {
-    where.push("date >= ?");
-    binds.push(from);
+function buildWhere(filters, { useFts = false, useLike = false } = {}) {
+  const where = ['tickets.is_deleted=?'];
+  const binds = [filters.trash ? 1 : 0];
+  if (filters.from) {
+    where.push('tickets.date >= ?');
+    binds.push(filters.from);
   }
-  if (to) {
-    where.push("date <= ?");
-    binds.push(to);
+  if (filters.to) {
+    where.push('tickets.date <= ?');
+    binds.push(filters.to);
   }
-  if (type) {
-    where.push("type = ?");
-    binds.push(type);
+  if (filters.type) {
+    where.push('tickets.type = ?');
+    binds.push(filters.type);
   }
-  const ftsQuery = q ? buildFtsQuery(q) : "";
-  const wantFts = Boolean(ftsQuery);
-  let filteredFromSql = "FROM tickets";
-  if (wantFts) {
-    filteredFromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
-    where.push("tickets_fts MATCH ?");
-    binds.push(ftsQuery);
-  } else if (q) {
-    const like = `%${q}%`;
+  if (useFts && filters.q) {
+    where.push('tickets_fts MATCH ?');
+    binds.push(buildFtsQuery(filters.q));
+  } else if (useLike && filters.q) {
+    const like = `%${filters.q}%`;
     where.push(`(
-      issue LIKE ? OR
-      department LIKE ? OR
-      name LIKE ? OR
-      solution LIKE ? OR
-      remarks LIKE ? OR
-      type LIKE ?
+      tickets.issue LIKE ? OR tickets.department LIKE ? OR tickets.name LIKE ? OR
+      tickets.solution LIKE ? OR tickets.remarks LIKE ? OR tickets.type LIKE ?
     )`);
     binds.push(like, like, like, like, like, like);
   }
+  return { whereSql: `WHERE ${where.join(' AND ')}`, binds };
+}
 
-  const baseWhereSql = `WHERE ${baseWhere.join(" AND ")}`;
-  const whereSql = `WHERE ${where.join(" AND ")}`;
+async function queryStats(env, filters, { preferFts = true } = {}) {
+  const baseWhere = 'WHERE is_deleted=?';
+  const baseBinds = [filters.trash ? 1 : 0];
 
-  const countAllSql = `SELECT COUNT(*) as total FROM tickets ${baseWhereSql}`;
-  const countFilteredSql = `SELECT COUNT(*) as total ${filteredFromSql} ${whereSql}`;
+  let fromSql = 'FROM tickets';
+  let whereInfo;
+  if (preferFts && filters.q && buildFtsQuery(filters.q)) {
+    fromSql = 'FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id';
+    whereInfo = buildWhere(filters, { useFts: true });
+  }
+  if (!whereInfo) whereInfo = buildWhere(filters, { useLike: !!filters.q });
 
-  const typeSql = `
-    SELECT COALESCE(NULLIF(TRIM(type),''),'未分类') as k, COUNT(*) as c
-    ${filteredFromSql}
-    ${whereSql}
+  const totalAllRow = await env.DB.prepare(`SELECT COUNT(*) AS total FROM tickets ${baseWhere}`).bind(...baseBinds).first();
+  const totalFilteredRow = await env.DB.prepare(`SELECT COUNT(*) AS total ${fromSql} ${whereInfo.whereSql}`).bind(...whereInfo.binds).first();
+  const typeRows = await env.DB.prepare(`
+    SELECT COALESCE(NULLIF(TRIM(tickets.type),''),'未分类') AS k, COUNT(*) AS c
+    ${fromSql}
+    ${whereInfo.whereSql}
     GROUP BY k
     ORDER BY c DESC, k ASC
-  `;
-
-  const monthSql = `
-    SELECT substr(date,1,7) as k, COUNT(*) as c
-    ${filteredFromSql}
-    ${whereSql}
+  `).bind(...whereInfo.binds).all();
+  const monthRows = await env.DB.prepare(`
+    SELECT substr(tickets.date,1,7) AS k, COUNT(*) AS c
+    ${fromSql}
+    ${whereInfo.whereSql}
     GROUP BY k
     ORDER BY k ASC
-  `;
+  `).bind(...whereInfo.binds).all();
 
-  try {
-    const allRow = await env.DB.prepare(countAllSql).bind(...baseBinds).first();
-    const filteredRow = await env.DB.prepare(countFilteredSql).bind(...binds).first();
+  const type_counts = {};
+  for (const row of typeRows?.results || []) type_counts[String(row.k)] = Number(row.c) || 0;
+  const month_counts = {};
+  for (const row of monthRows?.results || []) if (row.k) month_counts[String(row.k)] = Number(row.c) || 0;
 
-    const total_all = Number(allRow?.total ?? 0) || 0;
-    const total_filtered = Number(filteredRow?.total ?? 0) || 0;
-
-    const typeRes = await env.DB.prepare(typeSql).bind(...binds).all();
-    const monthRes = await env.DB.prepare(monthSql).bind(...binds).all();
-
-    const type_counts = {};
-    for (const r of (typeRes?.results ?? [])) {
-      type_counts[String(r.k)] = Number(r.c) || 0;
-    }
-
-    const month_counts = {};
-    for (const r of (monthRes?.results ?? [])) {
-      if (!r.k) continue;
-      month_counts[String(r.k)] = Number(r.c) || 0;
-    }
-
-    return await respondCachedJson(
-      request,
-      {
-        trash: trash ? 1 : 0,
-        total_all,
-        total_filtered,
-        type_counts,
-        month_counts,
-      },
-      { maxAge: 60 }
-    );
-  } catch (e) {
-    const msg = String(e?.message || e);
-    if (msg.includes('no such table: tickets_fts') || msg.includes('no such module: fts5') || msg.includes('unable to use function MATCH')) {
-      // FTS not available: rerun under new schema with LIKE.
-      const whereLike = ['is_deleted=?'];
-      const bindsLike = [trash ? 1 : 0];
-      if (from) { whereLike.push('date >= ?'); bindsLike.push(from); }
-      if (to) { whereLike.push('date <= ?'); bindsLike.push(to); }
-      if (type) { whereLike.push('type = ?'); bindsLike.push(type); }
-      if (q) {
-        const like = `%${q}%`;
-        whereLike.push(`(
-          issue LIKE ? OR
-          department LIKE ? OR
-          name LIKE ? OR
-          solution LIKE ? OR
-          remarks LIKE ? OR
-          type LIKE ?
-        )`);
-        bindsLike.push(like, like, like, like, like, like);
-      }
-      const whereLikeSql = `WHERE ${whereLike.join(' AND ')}`;
-      const countFilteredSqlLike = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
-      const typeSqlLike = `
-        SELECT COALESCE(NULLIF(TRIM(type),''),'未分类') as k, COUNT(*) as c
-        FROM tickets
-        ${whereLikeSql}
-        GROUP BY k
-        ORDER BY c DESC, k ASC
-      `;
-      const monthSqlLike = `
-        SELECT substr(date,1,7) as k, COUNT(*) as c
-        FROM tickets
-        ${whereLikeSql}
-        GROUP BY k
-        ORDER BY k ASC
-      `;
-      const allRow = await env.DB.prepare(countAllSql).bind(...baseBinds).first();
-      const filteredRow = await env.DB.prepare(countFilteredSqlLike).bind(...bindsLike).first();
-      const total_all = Number(allRow?.total ?? 0) || 0;
-      const total_filtered = Number(filteredRow?.total ?? 0) || 0;
-      const typeRes = await env.DB.prepare(typeSqlLike).bind(...bindsLike).all();
-      const monthRes = await env.DB.prepare(monthSqlLike).bind(...bindsLike).all();
-      const type_counts = {};
-      for (const r of (typeRes?.results ?? [])) { type_counts[String(r.k)] = Number(r.c) || 0; }
-      const month_counts = {};
-      for (const r of (monthRes?.results ?? [])) { if (!r.k) continue; month_counts[String(r.k)] = Number(r.c) || 0; }
-      return await respondCachedJson(request, { trash: trash ? 1 : 0, total_all, total_filtered, type_counts, month_counts }, { maxAge: 60 });
-    }
-
-    // old schema fallback (no is_deleted)
-    const baseWhere2 = [];
-    const baseBinds2 = [];
-
-    const where2 = [];
-    const binds2 = [];
-
-    if (from) {
-      where2.push("date >= ?");
-      binds2.push(from);
-    }
-    if (to) {
-      where2.push("date <= ?");
-      binds2.push(to);
-    }
-    if (type) {
-      where2.push("type = ?");
-      binds2.push(type);
-    }
-  const ftsQuery = q ? buildFtsQuery(q) : "";
-  const wantFts = Boolean(ftsQuery);
-  let filteredFromSql = "FROM tickets";
-  if (wantFts) {
-    filteredFromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
-    where.push("tickets_fts MATCH ?");
-    binds.push(ftsQuery);
-  } else if (q) {
-    const like = `%${q}%`;
-    where.push(`(
-      issue LIKE ? OR
-      department LIKE ? OR
-      name LIKE ? OR
-      solution LIKE ? OR
-      remarks LIKE ? OR
-      type LIKE ?
-    )`);
-    binds.push(like, like, like, like, like, like);
-  }
-
-    const baseWhereSql2 = baseWhere2.length ? `WHERE ${baseWhere2.join(" AND ")}` : "";
-    const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
-
-    const countAllSql2 = `SELECT COUNT(*) as total FROM tickets ${baseWhereSql2}`;
-    const countFilteredSql2 = `SELECT COUNT(*) as total FROM tickets ${whereSql2}`;
-
-    const typeSql2 = `
-      SELECT COALESCE(NULLIF(TRIM(type),''),'未分类') as k, COUNT(*) as c
-      FROM tickets
-      ${whereSql2}
-      GROUP BY k
-      ORDER BY c DESC, k ASC
-    `;
-
-    const monthSql2 = `
-      SELECT substr(date,1,7) as k, COUNT(*) as c
-      FROM tickets
-      ${whereSql2}
-      GROUP BY k
-      ORDER BY k ASC
-    `;
-
-    const allRow = await env.DB.prepare(countAllSql2).bind(...baseBinds2).first();
-    const filteredRow = await env.DB.prepare(countFilteredSql2).bind(...binds2).first();
-
-    const total_all = Number(allRow?.total ?? 0) || 0;
-    const total_filtered = Number(filteredRow?.total ?? 0) || 0;
-
-    const typeRes = await env.DB.prepare(typeSql2).bind(...binds2).all();
-    const monthRes = await env.DB.prepare(monthSql2).bind(...binds2).all();
-
-    const type_counts = {};
-    for (const r of (typeRes?.results ?? [])) {
-      type_counts[String(r.k)] = Number(r.c) || 0;
-    }
-
-    const month_counts = {};
-    for (const r of (monthRes?.results ?? [])) {
-      if (!r.k) continue;
-      month_counts[String(r.k)] = Number(r.c) || 0;
-    }
-
-    return await respondCachedJson(
-      request,
-      {
-        trash: trash ? 1 : 0,
-        total_all,
-        total_filtered,
-        type_counts,
-        month_counts,
-      },
-      { maxAge: 60 }
-    );
-  }
+  return {
+    trash: filters.trash ? 1 : 0,
+    total_all: Number(totalAllRow?.total ?? 0) || 0,
+    total_filtered: Number(totalFilteredRow?.total ?? 0) || 0,
+    type_counts,
+    month_counts,
+  };
 }
 
-function isCacheableGet(request) {
-  // Only cache public read requests (no edit key)
-  if ((request.method || "GET").toUpperCase() !== "GET") return false;
-  const k = request.headers.get("x-edit-key") || request.headers.get("X-EDIT-KEY");
-  if (k && String(k).trim()) return false;
-  return true;
+async function handleGet({ request, env }) {
+  const filters = buildFilters(new URL(request.url));
+  try {
+    let payload;
+    try {
+      payload = await queryStats(env, filters, { preferFts: true });
+    } catch (e) {
+      const msg = String(e || '');
+      if (!/tickets_fts|fts5|MATCH/i.test(msg)) throw e;
+      payload = await queryStats(env, filters, { preferFts: false });
+    }
+    return respondCachedJson(request, payload, { maxAge: 60 });
+  } catch (e) {
+    return errorResponse(String(e), { status: 500, code: 'stats_failed' });
+  }
 }
 
 export async function onRequestGet(ctx) {
-  const request = ctx.request;
-  const env = ctx.env;
-  if (!isCacheableGet(request)) {
-    return await handleGet({ request, env });
+  const { request } = ctx;
+  if (!isPublicGetRequest(request)) {
+    return handleGet(ctx);
   }
-
-  const url = new URL(request.url);
-  const cacheKey = new Request(url.toString(), { method: "GET" });
   const cache = caches.default;
-
+  const cacheKey = new Request(new URL(request.url).toString(), { method: 'GET' });
   const hit = await cache.match(cacheKey);
   if (hit) {
-    const h = new Headers(hit.headers);
-    h.set("x-edge-cache", "HIT");
-    return new Response(hit.body, { status: hit.status, headers: h });
+    const headers = new Headers(hit.headers);
+    headers.set('x-edge-cache', 'HIT');
+    return new Response(hit.body, { status: hit.status, headers });
   }
-
-
-  const res = await handleGet({ request, env });
-  // Cache only successful JSON responses (avoid caching 304/errors)
-  if (res && res.status === 200) {
-    // Ensure edge can cache: add s-maxage if not present
-    const cc = res.headers.get("cache-control") || "";
-    if (!/s-maxage=\d+/i.test(cc)) {
-      const headers = new Headers(res.headers);
-      const maxAgeMatch = /max-age=(\d+)/i.exec(cc);
-      const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : 60;
-      headers.set("cache-control", `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=300`);
-      const cloned = new Response(res.body, { status: res.status, headers });
-      await cache.put(cacheKey, cloned.clone());
-      return cloned;
-    }
-    await cache.put(cacheKey, res.clone());
-  }
-  return res;
+  const response = await handleGet(ctx);
+  if (response.status === 200) await cache.put(cacheKey, response.clone());
+  return response;
 }
