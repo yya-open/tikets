@@ -504,6 +504,41 @@
 </style>
 </head>
 <body>
+<div class="accordion-container">
+  <div class="panel">
+    <button class="accordion">系统健康检查</button>
+    <div class="panel-content">
+      <p>健康检查详情：Schema 3/3，工单 382，回收站 15，FTS 已启用</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <button class="accordion">查询 / 导出与备份</button>
+    <div class="panel-content">
+      <p>查询选项内容：</p>
+      <div>
+        <label for="start-date">开始日期：</label>
+        <input type="date" id="start-date" name="start-date">
+      </div>
+      <div>
+        <label for="end-date">结束日期：</label>
+        <input type="date" id="end-date" name="end-date">
+      </div>
+      <div>
+        <button class="export-btn">导出 Excel</button>
+        <button class="export-btn">导出 JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <button class="accordion">工具栏</button>
+    <div class="panel-content">
+      <p>工具栏内容...</p>
+    </div>
+  </div>
+</div>
+
 <h1>工单记录系统</h1>
 <div class="card">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
