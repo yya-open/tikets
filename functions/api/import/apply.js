@@ -1,112 +1,73 @@
-import { requireEditKey } from '../../_lib/auth.js';
-import { jsonResponse, errorResponse, readJson } from '../../_lib/http.js';
-import { assertImportSchemaReady, fetchExistingVersionMap, normalizeImportPayload, parseImportPayload, shouldOverwrite, tryRebuildFts, validateImportRecords } from '../../_lib/ticket_import.js';
+import { requireEditKey } from "../../_lib/auth.js";
+import { jsonResponse } from "../../_lib/http.js";
+import { diffImport, fetchExistingMap, normalizeImportPayload, parseImportPayload, summarizeDiff, summarizeImport } from "../../_lib/import_common.js";
 
-function buildUpsertStatement(db, row) {
-  const versionTs = Number(row.updated_at_ts || 0) || Date.now();
-  return db.prepare(
-    `INSERT INTO tickets (
-      id, date, issue, department, name, solution, remarks, type,
-      is_deleted, deleted_at, updated_at, updated_at_ts
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP), ?)
-    ON CONFLICT(id) DO UPDATE SET
-      date=excluded.date,
-      issue=excluded.issue,
-      department=excluded.department,
-      name=excluded.name,
-      solution=excluded.solution,
-      remarks=excluded.remarks,
-      type=excluded.type,
-      is_deleted=excluded.is_deleted,
-      deleted_at=excluded.deleted_at,
-      updated_at=excluded.updated_at,
-      updated_at_ts=excluded.updated_at_ts`
-  ).bind(
-    row.id,
-    row.date,
-    row.issue,
-    row.department,
-    row.name,
-    row.solution,
-    row.remarks,
-    row.type,
-    row.is_deleted,
-    row.is_deleted ? (row.deleted_at || row.updated_at || new Date().toISOString()) : null,
-    row.updated_at || '',
-    versionTs,
-  );
+async function tryRebuildFTS(env) {
+  try {
+    await env.DB.prepare("INSERT INTO tickets_fts(tickets_fts) VALUES('rebuild')").run();
+    return { ok: true };
+  } catch (e) {
+    if (/no such table/i.test(String(e || ""))) return { ok: true, skipped: true };
+    return { ok: false, error: String(e) };
+  }
 }
 
 export async function onRequestPost({ request, env }) {
-  const denied = requireEditKey(request, env);
-  if (denied) return denied;
+  const auth = requireEditKey(request, env);
+  if (auth) return auth;
 
-  const body = await readJson(request);
-  if (!body.ok) return body.response;
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
+  }
 
-  const parsed = parseImportPayload(body.value);
+  const parsed = parseImportPayload(payload);
   if (!parsed) {
-    return errorResponse('Expected an array or {active,trash}', { status: 400, code: 'bad_payload' });
+    return jsonResponse({ ok: false, error: "Expected an array or {active,trash}" }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
   const normalized = normalizeImportPayload(parsed);
-  const validationError = validateImportRecords(normalized.all);
-  if (validationError) {
-    return errorResponse(validationError, { status: 400, code: 'invalid_record' });
+  const incomingSummary = summarizeImport(normalized.all);
+  const existingMap = await fetchExistingMap(env, normalized.all.map((row) => row.id));
+  const details = diffImport(existingMap, normalized.all);
+  const totals = summarizeDiff(details, incomingSummary);
+
+  if (totals.invalid > 0) {
+    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", totals, examples: { invalid: details.invalid.slice(0, 10) } }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const schema = await assertImportSchemaReady(env.DB);
-  if (!schema.ok) {
-    return errorResponse('schema_not_ready', {
-      status: 409,
-      code: 'schema_not_ready',
-      extra: { missing: schema.missing, hint: 'Run /api/admin/oneclick or /api/admin/migrate first. Import apply no longer patches schema.' },
-    });
-  }
+  const nowTs = Date.now();
+  const insertStmt = env.DB.prepare(
+    `INSERT INTO tickets (
+      id, date, issue, department, name, solution, remarks, type,
+      is_deleted, deleted_at, updated_at, updated_at_ts
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?)`
+  );
+  const updateStmt = env.DB.prepare(
+    `UPDATE tickets SET
+      date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+      is_deleted=?, deleted_at=?, updated_at=COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), updated_at_ts=?
+     WHERE id=?`
+  );
 
-  const ids = normalized.all.map((r) => r.id).filter((id) => Number.isFinite(id));
-  const existingMap = await fetchExistingVersionMap(env.DB, ids);
-
-  const toWrite = [];
-  let inserts = 0;
-  let updates = 0;
-  let skips = 0;
-  let skipped_newer_or_equal = 0;
-
+  const statements = [];
   for (const row of normalized.all) {
+    if (!row.date || !row.issue) continue;
     const existing = Number.isFinite(row.id) ? existingMap.get(row.id) : null;
-    if (!Number.isFinite(row.id) || !existing) {
-      inserts += 1;
-      toWrite.push(row);
-      continue;
-    }
-    if (shouldOverwrite(existing, row)) {
-      updates += 1;
-      toWrite.push(row);
+    if (!existing) {
+      statements.push(insertStmt.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs));
     } else {
-      skips += 1;
-      skipped_newer_or_equal += 1;
+      const shouldUpdate = details.updates.some((item) => item.id === row.id);
+      if (!shouldUpdate) continue;
+      statements.push(updateStmt.bind(row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs, row.id));
     }
   }
 
-  const BATCH = 90;
-  for (let i = 0; i < toWrite.length; i += BATCH) {
-    const chunk = toWrite.slice(i, i + BATCH);
-    await env.DB.batch(chunk.map((row) => buildUpsertStatement(env.DB, row)));
+  if (statements.length > 0) {
+    await env.DB.batch(statements);
   }
-
-  const fts = await tryRebuildFts(env.DB);
-  return jsonResponse({
-    ok: true,
-    totals: {
-      incoming: normalized.all.length,
-      active: normalized.active.length,
-      trash: normalized.trash.length,
-      inserts,
-      updates,
-      skips,
-      skipped_newer_or_equal,
-    },
-    fts,
-  });
+  const fts = await tryRebuildFTS(env);
+  return jsonResponse({ ok: true, totals, applied: statements.length, fts }, { headers: { "cache-control": "no-store" } });
 }

@@ -1,61 +1,38 @@
-import { requireEditKey } from '../_lib/auth.js';
-import { jsonResponse, errorResponse, readJson } from '../_lib/http.js';
-import { assertImportSchemaReady, assignSequentialIds, normalizeImportPayload, parseImportPayload, tryRebuildFts, validateImportRecords } from '../_lib/ticket_import.js';
+import { requireEditKey } from "../_lib/auth.js";
+import { jsonResponse } from "../_lib/http.js";
+import { normalizeImportPayload, parseImportPayload } from "../_lib/import_common.js";
 
-function buildStageInsert(db, row) {
-  return db.prepare(
-    `INSERT INTO tickets_import_stage (
-      id, date, issue, department, name, solution, remarks, type,
-      updated_at, updated_at_ts, is_deleted, deleted_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP), ?, ?, ?)`
-  ).bind(
-    row.id,
-    row.date,
-    row.issue,
-    row.department,
-    row.name,
-    row.solution,
-    row.remarks,
-    row.type,
-    row.updated_at || '',
-    Number(row.updated_at_ts || 0) || Date.now(),
-    row.is_deleted,
-    row.is_deleted ? (row.deleted_at || row.updated_at || new Date().toISOString()) : null,
-  );
+async function tryRebuildFTS(env) {
+  try {
+    await env.DB.prepare("INSERT INTO tickets_fts(tickets_fts) VALUES('rebuild')").run();
+  } catch {}
 }
 
 export async function onRequestPut({ request, env }) {
-  const denied = requireEditKey(request, env);
-  if (denied) return denied;
+  const auth = requireEditKey(request, env);
+  if (auth) return auth;
 
-  const body = await readJson(request);
-  if (!body.ok) return body.response;
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
+  }
 
-  const parsed = parseImportPayload(body.value);
+  const parsed = parseImportPayload(payload);
   if (!parsed) {
-    return errorResponse('Expected an array or {active,trash}', { status: 400, code: 'bad_payload' });
+    return jsonResponse({ ok: false, error: "Expected an array or {active,trash}" }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
   const normalized = normalizeImportPayload(parsed);
-  const withIds = assignSequentialIds(normalized.all);
-  const validationError = validateImportRecords(withIds);
-  if (validationError) {
-    return errorResponse(validationError, { status: 400, code: 'invalid_record' });
+  const invalid = normalized.all.filter((row) => !row.date || !row.issue);
+  if (invalid.length) {
+    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", invalid: invalid.slice(0, 10) }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const schema = await assertImportSchemaReady(env.DB);
-  if (!schema.ok) {
-    return errorResponse('schema_not_ready', {
-      status: 409,
-      code: 'schema_not_ready',
-      extra: { missing: schema.missing, hint: 'Run /api/admin/oneclick or /api/admin/migrate first. Full import no longer patches schema.' },
-    });
-  }
-
-  await env.DB.prepare(`DROP TABLE IF EXISTS tickets_import_stage`).run();
-  await env.DB.prepare(`
-    CREATE TABLE tickets_import_stage (
-      id INTEGER PRIMARY KEY,
+  const createStageSql = `
+    CREATE TABLE IF NOT EXISTS tickets_stage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
       issue TEXT NOT NULL,
       department TEXT,
@@ -63,37 +40,27 @@ export async function onRequestPut({ request, env }) {
       solution TEXT,
       remarks TEXT,
       type TEXT,
-      updated_at TEXT,
-      updated_at_ts INTEGER,
+      updated_at TEXT DEFAULT (datetime('now')),
+      updated_at_ts INTEGER DEFAULT 0,
       is_deleted INTEGER DEFAULT 0,
       deleted_at TEXT
     )
-  `).run();
+  `;
+  await env.DB.prepare(createStageSql).run();
+  await env.DB.prepare("DELETE FROM tickets_stage").run();
 
-  try {
-    const BATCH = 90;
-    for (let i = 0; i < withIds.length; i += BATCH) {
-      const chunk = withIds.slice(i, i + BATCH);
-      await env.DB.batch(chunk.map((row) => buildStageInsert(env.DB, row)));
-    }
-
-    await env.DB.prepare('DELETE FROM tickets').run();
-    await env.DB.prepare(`
-      INSERT INTO tickets (
-        id, date, issue, department, name, solution, remarks, type,
-        updated_at, updated_at_ts, is_deleted, deleted_at
-      )
-      SELECT id, date, issue, department, name, solution, remarks, type,
-             updated_at, updated_at_ts, is_deleted, deleted_at
-      FROM tickets_import_stage
-      ORDER BY id ASC
-    `).run();
-
-    const fts = await tryRebuildFts(env.DB);
-    return jsonResponse({ ok: true, inserted: withIds.length, mode: 'replace_via_stage', fts });
-  } catch (e) {
-    return errorResponse(String(e), { status: 500, code: 'full_import_failed' });
-  } finally {
-    try { await env.DB.prepare('DROP TABLE IF EXISTS tickets_import_stage').run(); } catch {}
+  const insertStage = env.DB.prepare(
+    `INSERT INTO tickets_stage (id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?, ?, ?)`
+  );
+  for (let i = 0; i < normalized.all.length; i += 100) {
+    const chunk = normalized.all.slice(i, i + 100).map((row) => insertStage.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.updated_at, row.updated_at_ts || Date.now(), row.is_deleted, row.deleted_at || null));
+    if (chunk.length) await env.DB.batch(chunk);
   }
+
+  await env.DB.prepare("DELETE FROM tickets").run();
+  await env.DB.prepare(`INSERT INTO tickets (id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at) SELECT id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at FROM tickets_stage ORDER BY id`).run();
+  await tryRebuildFTS(env);
+
+  return jsonResponse({ ok: true, inserted: normalized.all.length, active: normalized.active.length, trash: normalized.trash.length, mode: "replace_all_via_stage" }, { headers: { "cache-control": "no-store" } });
 }
