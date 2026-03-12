@@ -1,9 +1,35 @@
 (function () {
-  function h(s) { return window.TicketUI ? window.TicketUI.escapeHtml(s) : String(s ?? ''); }
-  function formatDiffList(changes) { if (!Array.isArray(changes) || changes.length === 0) return '无'; return changes.map((c) => `  - ${c.field}: ${c.from || '空'} → ${c.to || '空'}`).join('\n'); }
-  function lines(items, emptyText) { if (!Array.isArray(items) || items.length === 0) return emptyText; return items.map((item) => { const idPart = item.id == null ? '新记录' : `#${item.id}`; const header = `• ${idPart} ${item.date || ''} ${item.issue || ''} —— ${item.reason || ''}`.trim(); return Array.isArray(item.changes) && item.changes.length ? `${header}\n${formatDiffList(item.changes)}` : header; }).join('\n'); }
-  function format(preview) { const t = preview?.totals || {}; const ex = preview?.examples || {}; return [`输入：${t.incoming || 0} 条（active ${t.active || 0} / trash ${t.trash || 0}）`,`新增：${t.inserts || 0} 条`,`更新：${t.updates || 0} 条`,`跳过：${t.skips || 0} 条`,`无效：${t.invalid || 0} 条`,'','新增示例：',lines(ex.inserts, '无'),'','更新示例（旧值 → 新值）：',lines(ex.updates, '无'),'','跳过示例：',lines(ex.skips, '无'),'','无效示例：',lines(ex.invalid, '无')].join('\n'); }
-  function renderHtml(preview) { const t = preview?.totals || {}; const sections = [['更新示例', preview?.examples?.updates || [], true], ['跳过示例', preview?.examples?.skips || [], true], ['无效示例', preview?.examples?.invalid || [], false], ['新增示例', preview?.examples?.inserts || [], false]]; const parts = [`<div style="font-size:13px;line-height:1.55;">`, `<div style="margin-bottom:10px;">输入 <b>${t.incoming || 0}</b> 条；新增 <b>${t.inserts || 0}</b>；更新 <b>${t.updates || 0}</b>；跳过 <b>${t.skips || 0}</b>；无效 <b>${t.invalid || 0}</b></div>`]; sections.forEach(([title, rows, withDiff]) => { parts.push(`<h4 style="margin:12px 0 6px;">${title}</h4><div style="max-height:180px;overflow:auto;border:1px solid #eee;border-radius:10px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr><th style="background:#fafafa;position:sticky;top:0;">记录</th><th style="background:#fafafa;position:sticky;top:0;">问题</th><th style="background:#fafafa;position:sticky;top:0;">说明</th><th style="background:#fafafa;position:sticky;top:0;">字段差异</th></tr></thead><tbody>`); if (!rows.length) { parts.push('<tr><td colspan="4" style="text-align:center;color:#999;">无</td></tr>'); } else { rows.forEach((item) => { parts.push(`<tr><td>${h(item.id == null ? '新记录' : '#' + item.id)}</td><td>${h(item.issue || '')}</td><td>${h(item.reason || '')}</td><td>${withDiff && Array.isArray(item.changes) ? item.changes.map((c) => `<div><b>${h(c.field)}</b>：${h(c.from || '空')} → ${h(c.to || '空')}</div>`).join('') : '-'}</td></tr>`); }); } parts.push('</tbody></table></div>'); }); parts.push('</div>'); return parts.join(''); }
-  async function showModal(preview, opts = {}) { if (window.TicketUI && window.TicketUI.showRichConfirm) return window.TicketUI.showRichConfirm({ title: opts.title || '导入预演', html: renderHtml(preview), confirmText: opts.confirmText || '确定', cancelText: opts.cancelText || '取消' }); return window.showConfirm({ title: opts.title || '导入预演', message: format(preview), confirmText: opts.confirmText || '确定', cancelText: opts.cancelText || '取消' }); }
-  window.TicketImportPreview = { format, renderHtml, showModal };
+  function lines(items, emptyText) {
+    if (!Array.isArray(items) || items.length === 0) return emptyText;
+    return items.map((item) => {
+      const idPart = item.id === null || item.id === undefined ? "新记录" : `#${item.id}`;
+      return `• ${idPart} ${item.date || ""} ${item.issue || ""} —— ${item.reason || ""}`.trim();
+    }).join("\n");
+  }
+
+  function format(preview) {
+    const t = preview?.totals || {};
+    const ex = preview?.examples || {};
+    return [
+      `新增：${t.inserts || 0} 条`,
+      `更新：${t.updates || 0} 条`,
+      `跳过：${t.skips || 0} 条`,
+      `无效：${t.invalid || 0} 条`,
+      `输入：${t.incoming || 0} 条（active ${t.active || 0} / trash ${t.trash || 0}）`,
+      "",
+      "新增示例：",
+      lines(ex.inserts, "无"),
+      "",
+      "更新示例：",
+      lines(ex.updates, "无"),
+      "",
+      "跳过示例：",
+      lines(ex.skips, "无"),
+      "",
+      "无效示例：",
+      lines(ex.invalid, "无"),
+    ].join("\n");
+  }
+
+  window.TicketImportPreview = { format };
 })();
