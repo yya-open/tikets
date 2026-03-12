@@ -128,13 +128,34 @@ function splitSqlStatements(sql) {
 const MIGRATIONS = [
   {
     version: 1,
-    name: "create schema_migrations table",
+    name: "initialize tickets schema",
     sql: `
       CREATE TABLE IF NOT EXISTS schema_migrations(
         version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         applied_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  issue TEXT NOT NULL,
+  department TEXT,
+  name TEXT,
+  solution TEXT,
+  remarks TEXT,
+  type TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_at_ts INTEGER DEFAULT 0,
+  -- v2: recycle bin (soft delete)
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT
+);
+
+-- Helpful indexes for pagination & filtering
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_date_id ON tickets(is_deleted, date, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_deletedat_id ON tickets(is_deleted, deleted_at, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
     `,
   },
   {
@@ -171,8 +192,11 @@ export async function listPendingMigrations(db) {
 }
 
 export async function applyPendingMigrations(db) {
-  // Ensure base table exists first
-  await db.prepare(MIGRATIONS[0].sql).run();
+  // Ensure base schema exists first
+  const bootstrapStatements = splitSqlStatements(MIGRATIONS[0].sql);
+  if (bootstrapStatements.length) {
+    await db.batch(bootstrapStatements.map((s) => db.prepare(s)));
+  }
 
   const pending = await listPendingMigrations(db);
   const applied = [];

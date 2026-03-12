@@ -11,6 +11,13 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script src="/assets/js/ticket-auth.js"></script>
+<script src="/assets/js/ticket-api.js"></script>
+<script src="/assets/js/ticket-errors.js"></script>
+<script src="/assets/js/ticket-filters.js"></script>
+<script src="/assets/js/ticket-validation.js"></script>
+<script src="/assets/js/ticket-import-preview.js"></script>
+<script src="/assets/js/ticket-health.js"></script>
 <style>
     body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
     h1, h2, h3 { margin: 0 0 10px; }
@@ -538,7 +545,7 @@
       </summary>
 
       <div class="settings-desc">
-        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器。
+        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前会话。
       </div>
     </details>
 
@@ -563,6 +570,12 @@
       </div>
     </details>
   </div>
+</div>
+
+<div class="card">
+<h2>系统健康检查</h2>
+<div id="healthSummary" style="font-size:14px; margin-top:8px;">加载中...</div>
+<div style="font-size:12px; color:#8c8c8c; margin-top:6px;">只读检查：数据库连通性、schema 版本、FTS 与工单数量。</div>
 </div>
 
 <!-- 筛选 & 月份视图 & 导出 / 备份操作 -->
@@ -595,6 +608,14 @@
 <option>会议问题</option>
 <option>用户咨询</option>
 </select>
+</div>
+<div>
+<label>部门包含：</label>
+<input id="filterDepartment" placeholder="例如：车辆 / 财务" type="text"/>
+</div>
+<div>
+<label>姓名包含：</label>
+<input id="filterName" placeholder="例如：张三" type="text"/>
 </div>
 <div>
 <label>关键字（问题/部门/姓名等）：</label>
@@ -770,7 +791,7 @@
       <div class="key-help">
         <div>• 上次设置：<b><span id="editKeySetAt2">-</span></b></div>
         <div>• 读取（GET）公开；写入（POST/PUT/DELETE/导入覆盖云端）需要口令。</div>
-        <div>• 口令仅保存在<b>当前浏览器</b>的 localStorage，不会上传到云端。</div>
+        <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，关闭标签页后需要重新输入。</div>
         <div>• 如果口令输入错误，写操作会返回 401，并提示你重新设置。</div>
       </div>
 
@@ -836,26 +857,32 @@
     const EDIT_KEY_STORAGE = "ticket_edit_key";
 
     function getEditKey() {
-      try { return localStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
+      if (window.TicketAuth && typeof window.TicketAuth.get === "function") return window.TicketAuth.get();
+      try { return sessionStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKey(key) {
-      try { localStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.set === "function") return window.TicketAuth.set(key);
+      try { sessionStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
     }
     function clearEditKey() {
-      try { localStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.clear === "function") return window.TicketAuth.clear();
+      try { sessionStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
     }
     
 
     const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
 
     function getEditKeySetAt() {
-      try { return localStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
+      if (window.TicketAuth && typeof window.TicketAuth.getSetAt === "function") return window.TicketAuth.getSetAt();
+      try { return sessionStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
     }
     function setEditKeySetAtNow() {
-      try { localStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.setSetAtNow === "function") return window.TicketAuth.setSetAtNow();
+      try { sessionStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
     }
     function clearEditKeySetAt() {
-      try { localStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
+      if (window.TicketAuth && typeof window.TicketAuth.clearSetAt === "function") return window.TicketAuth.clearSetAt();
+      try { sessionStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
     }
 
     function formatISOToLocal(iso) {
@@ -1469,10 +1496,10 @@ async function runOneClickInit() {
 
     // ===== 云端存储（Cloudflare Pages Functions + D1）=====
     async function loadFromServer() {
-      const res = await fetch("/api/tickets", { cache: "no-store" });
+      const res = await fetch("/api/tickets");
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
       const data = await res.json();
-      records = normalizeRecords(Array.isArray(data) ? data : []);
+      records = normalizeRecords(Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
       const maxId = records.reduce((max, r) => {
         const v = Number(r.id);
         return Number.isFinite(v) ? Math.max(max, v) : max;
@@ -1489,43 +1516,16 @@ async function runOneClickInit() {
         showToast(`已从云端加载 ${records.length} 条${viewMode === "trash" ? "回收站记录" : "工单"}`, "success");
       }
     }
-
-
     async function authedFetch(url, options = {}) {
-      const method = String(options.method || "GET").toUpperCase();
-      const needAuth = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
-      if (!needAuth) return fetch(url, options);
-
-      const key = await ensureEditKey();
-      const headers = new Headers(options.headers || {});
-      if (key) headers.set("X-EDIT-KEY", key);
-
-	      const res = await fetch(url, { ...options, headers });
-
-	      if (res.status === 401) {
-	        clearEditKey();
-	        updateEditKeyStatus();
-	        if (typeof showToast === "function") showToast("写入口令错误，请重新输入。", "error");
-	      } else if (res.status === 500) {
-	        // 500 可能是后端真实异常，也可能是 EDIT_KEY 未配置。
-	        // 仅当响应内容明确提示 EDIT_KEY 缺失时才弹该提示。
-	        try {
-	          const t = await res.clone().text();
-	          if (/EDIT_KEY|misconfigured/i.test(t)) {
-	            if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY。", "error");
-	          }
-	        } catch {
-	          // ignore
-	        }
-	      }
-	      return res;
+      if (window.TicketApi && window.TicketApi.authedFetch) {
+        return window.TicketApi.authedFetch(url, options);
+      }
+      return fetch(url, options);
     }
-	
-	    // 用于 catch 中判断：401（口令错误）已经在 authedFetch 里提示过了，就不再显示通用错误 toast。
-	    function isNoKeyError(err) {
-	      const msg = String((err && err.message) || err || "");
-	      return /\b401\b/.test(msg) || /Unauthorized/i.test(msg);
-	    }
+
+    function isNoKeyError(err) {
+      return Boolean(window.TicketErrors && window.TicketErrors.isAuthError && window.TicketErrors.isAuthError(err));
+    }
     
 
     
@@ -1846,18 +1846,24 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
         }
       }
 
-      const fromInput = (document.getElementById("filterFrom")?.value || "").trim();
-      const toInput = (document.getElementById("filterTo")?.value || "").trim();
-      const type = (document.getElementById("filterType")?.value || "").trim();
-      const q = (document.getElementById("filterKeyword")?.value || "").trim();
+      const filters = window.TicketFilters ? window.TicketFilters.read() : {
+        from: (document.getElementById("filterFrom")?.value || "").trim(),
+        to: (document.getElementById("filterTo")?.value || "").trim(),
+        type: (document.getElementById("filterType")?.value || "").trim(),
+        department: (document.getElementById("filterDepartment")?.value || "").trim(),
+        name: (document.getElementById("filterName")?.value || "").trim(),
+        q: (document.getElementById("filterKeyword")?.value || "").trim(),
+      };
 
-      const from = maxDate(rangeFrom, fromInput);
-      const to = minDate(rangeTo, toInput);
+      const from = maxDate(rangeFrom, filters.from);
+      const to = minDate(rangeTo, filters.to);
 
       if (from) sp.set("from", from);
       if (to) sp.set("to", to);
-      if (type) sp.set("type", type);
-      if (q) sp.set("q", q);
+      if (filters.type) sp.set("type", filters.type);
+      if (filters.department) sp.set("department", filters.department);
+      if (filters.name) sp.set("name", filters.name);
+      if (filters.q) sp.set("q", filters.q);
       return sp;
     }
 
@@ -1877,7 +1883,7 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       // 仅用于：年/月可用性与总量展示（不受筛选影响）
       const sp = new URLSearchParams();
       if (viewMode === "trash") sp.set("trash", "1");
-      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
+      const res = await fetch(`/api/stats?${sp.toString()}`);
       if (!res.ok) throw new Error(`meta stats failed: ${res.status}`);
       const j = await res.json();
       metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
@@ -1895,13 +1901,20 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
         sp.set("direction", cursorNav.direction || "next");
       }
 
-      const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
+      const res = await authedFetch(`/api/tickets?${sp.toString()}`);
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
       const j = await res.json();
 
       const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
       records = normalizeRecords(arr);
       serverTotal = Number(j?.total ?? records.length) || 0;
+
+      if (j && j.filters && typeof j.filters === "object") {
+        const fd = document.getElementById("filterDepartment");
+        const fn = document.getElementById("filterName");
+        if (fd && !fd.value && j.filters.department) fd.value = j.filters.department;
+        if (fn && !fn.value && j.filters.name) fn.value = j.filters.name;
+      }
 
       // 兼容后端回传 page/pageSize
       const p = Number(j?.page);
@@ -1927,7 +1940,7 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
       lastStatsKey = key;
 
       const sp = buildFilters({ includeYearMonth: true });
-      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
+      const res = await fetch(`/api/stats?${sp.toString()}`);
       if (!res.ok) throw new Error(`stats failed: ${res.status}`);
       cachedStats = await res.json();
       return cachedStats;
@@ -1961,12 +1974,12 @@ async function addOrUpdateRecord() {
   const remarks = document.getElementById("remarks").value.trim();
   const type = document.getElementById("type").value;
 
-  if (!date || !issue) {
-    showToast("请至少填写日期和问题！", "warning");
+  const payload = { date, issue, department, name, solution, remarks, type };
+  const checked = window.TicketValidation ? window.TicketValidation.validateTicketForm(payload) : { ok: !!date && !!issue, errors: [] };
+  if (!checked.ok) {
+    showToast((window.TicketValidation ? window.TicketValidation.render(checked.errors) : "请至少填写日期和问题！"), "warning");
     return;
   }
-
-  const payload = { date, issue, department, name, solution, remarks, type };
 
   const btn = document.getElementById("submitBtn");
   const oldText = btn ? btn.innerText : "";
@@ -1999,13 +2012,11 @@ async function addOrUpdateRecord() {
 
         const overwrite = await showConfirm({
           title: "编辑冲突",
-          message: `建议使用【合并导入】（不清空云端）。
+          message: `这条记录已被其他人更新。
 
-合并规则：仅当备份记录的 updated_at 更新更晚时才覆盖云端同 id 记录。
-
-- 确认：合并到云端（安全）
-- 取消：仅导入本地（只影响你当前浏览器）`,
-        confirmText: "覆盖保存",
+- 确认：强制覆盖服务器上的最新版本
+- 取消：先加载最新版本，再决定如何修改`,
+          confirmText: "覆盖保存",
           cancelText: "加载最新",
           danger: true
         });
@@ -2039,6 +2050,7 @@ async function addOrUpdateRecord() {
     await reloadAndRender();
     showToast("已保存到云端。", "success");
   } catch (e) {
+    if (window.TicketErrors) { window.TicketErrors.toast(e, "保存失败：请检查网络或后端是否正常。"); return; }
     if (isNoKeyError(e)) return;
     console.error(e);
     showToast("保存失败：请检查网络或后端是否正常。", "error");
@@ -2114,6 +2126,7 @@ async function deleteRecord(id) {
     await reloadAndRender();
     showToast("已移入回收站。", "success");
   } catch (e) {
+    if (window.TicketErrors) { window.TicketErrors.toast(e, "删除失败：请检查网络或后端是否正常。"); return; }
     if (isNoKeyError(e)) return;
     console.error(e);
     showToast("删除失败：请检查网络或后端是否正常。", "error");
@@ -2135,6 +2148,7 @@ async function restoreRecord(id) {
     await reloadAndRender();
     showToast("已恢复该工单。", "success");
   } catch (e) {
+    if (window.TicketErrors) { window.TicketErrors.toast(e, "恢复失败：请检查网络或后端是否正常。"); return; }
     if (isNoKeyError(e)) return;
     console.error(e);
     showToast("恢复失败：请检查网络或后端是否正常。", "error");
@@ -2156,6 +2170,7 @@ async function hardDeleteRecord(id) {
     await reloadAndRender();
     showToast("已彻底删除。", "success");
   } catch (e) {
+    if (window.TicketErrors) { window.TicketErrors.toast(e, "彻底删除失败：请检查网络或后端是否正常。"); return; }
     if (isNoKeyError(e)) return;
     console.error(e);
     showToast("彻底删除失败：请检查网络或后端是否正常。", "error");
@@ -2166,6 +2181,8 @@ async function hardDeleteRecord(id) {
       document.getElementById("filterFrom").value = "";
       document.getElementById("filterTo").value = "";
       document.getElementById("filterType").value = "";
+      if (document.getElementById("filterDepartment")) document.getElementById("filterDepartment").value = "";
+      if (document.getElementById("filterName")) document.getElementById("filterName").value = "";
       document.getElementById("filterKeyword").value = "";
       // 保留月份视图状态，仅清空高级筛选
       renderTable({ resetPage: true });
@@ -2188,7 +2205,7 @@ async function renderTable({ resetPage = true } = {}) {
     await loadPageFromServer();
   } catch (e) {
     console.error(e);
-    showToast("加载失败：请检查网络或后端是否正常。", "error");
+    if (window.TicketErrors) window.TicketErrors.toast(e, "加载失败：请检查网络或后端是否正常。"); else showToast("加载失败：请检查网络或后端是否正常。", "error");
     records = [];
     serverTotal = 0;
   }
@@ -2775,7 +2792,7 @@ tooltip: {
 
       while (page <= maxPages) {
         sp.set("page", String(page));
-        const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
+        const res = await authedFetch(`/api/tickets?${sp.toString()}`);
         if (!res.ok) throw new Error(`export load failed: ${res.status}`);
         const j = await res.json();
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
@@ -2990,22 +3007,7 @@ function loadBackup(event) {
         const preview = await previewRes.json();
         const t = preview && preview.totals ? preview.totals : null;
 
-        const msg =
-          (t
-            ? `预演结果：
-
-` +
-              `- 新增：${t.inserts} 条
-` +
-              `- 更新：${t.updates} 条（仅备份更晚才覆盖）
-` +
-              `- 跳过：${t.skips} 条（其中云端更新更晚/相等：${t.skipped_newer_or_equal} 条）
-` +
-              `- 输入：${t.incoming} 条（active ${t.active} / trash ${t.trash}）
-`
-	            : "无法获取预演统计。\n") +
-          `
-是否应用该导入？（不会清空云端）`;
+        const msg = window.TicketImportPreview ? window.TicketImportPreview.format(preview) : `预演结果：新增 ${t?.inserts || 0} 条，更新 ${t?.updates || 0} 条，跳过 ${t?.skips || 0} 条。`;
 
         const apply = await showConfirm({
           title: "导入预演（安全合并）",
@@ -3091,7 +3093,7 @@ function loadBackup(event) {
         showToast(`已导入到本地（共 ${records.length} 条，仅本浏览器）！`, "success");
       }
     } catch (err) {
-      if (isNoKeyError(err)) return;
+      if (window.TicketErrors && window.TicketErrors.isAuthError(err)) { window.TicketErrors.toast(err, "导入失败"); return; }
       console.error(err);
       if (err instanceof SyntaxError) {
         showToast("解析备份失败：文件不是有效的 JSON。", "error");
@@ -3168,6 +3170,7 @@ function loadBackup(event) {
     
 (async function init() {
   try { updateEditKeyStatus(); } catch (e) {}
+  try { if (window.TicketHealth) { const health = await window.TicketHealth.load(); window.TicketHealth.render(health); } } catch (e) { console.warn(e); if (window.TicketHealth) window.TicketHealth.render({ ok:false }); }
 
   // 先恢复月份视图（只影响筛选/显示，不影响数据源）
   loadViewState();
