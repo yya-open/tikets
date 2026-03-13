@@ -7,11 +7,16 @@ function getTodayLocalISO() {
   return `${y}-${m}-${d}`;
 }
 
+function getDefaultTicketType() {
+  return (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.ticketType) || "日常故障";
+}
+
 function openTicketModal(reset = true) {
   const mask = document.getElementById("ticketModal");
   if (!mask) return;
   mask.classList.add("show");
   if (reset) resetForm(true);
+  if (window.TicketValidation) window.TicketValidation.initFormValidationUI();
   setTimeout(() => {
     const el = document.getElementById("date");
     if (el) el.focus();
@@ -30,7 +35,8 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTicke
 function resetForm(resetEditing = true) {
   document.getElementById("ticketForm")?.reset();
   document.getElementById("date").value = getTodayLocalISO();
-  document.getElementById("type").value = "日常故障";
+  document.getElementById("type").value = getDefaultTicketType();
+  if (window.TicketValidation) window.TicketValidation.clearValidationErrors();
   if (resetEditing) {
     window.TicketAppState.editingId = null;
     window.TicketAppState.editingUpdatedAt = "";
@@ -50,7 +56,8 @@ function fillFormFromRecord(record) {
   document.getElementById("name").value = record.name || "";
   document.getElementById("solution").value = record.solution || "";
   document.getElementById("remarks").value = record.remarks || "";
-  document.getElementById("type").value = record.type || "日常故障";
+  document.getElementById("type").value = record.type || getDefaultTicketType();
+  if (window.TicketValidation) window.TicketValidation.clearValidationErrors();
   document.getElementById("submitBtn").innerText = "保存修改";
 }
 
@@ -63,21 +70,23 @@ function editRecord(id) {
 
 async function addOrUpdateRecord() {
   const state = window.TicketAppState;
-  const payload = {
+  const rawPayload = {
     date: document.getElementById("date").value,
-    issue: document.getElementById("issue").value.trim(),
-    department: document.getElementById("department").value.trim(),
-    name: document.getElementById("name").value.trim(),
-    solution: document.getElementById("solution").value.trim(),
-    remarks: document.getElementById("remarks").value.trim(),
+    issue: document.getElementById("issue").value,
+    department: document.getElementById("department").value,
+    name: document.getElementById("name").value,
+    solution: document.getElementById("solution").value,
+    remarks: document.getElementById("remarks").value,
     type: document.getElementById("type").value
   };
 
-  const checked = window.TicketValidation ? window.TicketValidation.validateTicketForm(payload) : { ok: !!payload.date && !!payload.issue, errors: [] };
+  const checked = window.TicketValidation ? window.TicketValidation.validateTicketForm(rawPayload) : { ok: !!rawPayload.date && !!rawPayload.issue, errors: [], payload: rawPayload, fieldErrors: {} };
   if (!checked.ok) {
+    if (window.TicketValidation) window.TicketValidation.applyValidationErrors(checked.fieldErrors);
     showToast(window.TicketValidation ? window.TicketValidation.render(checked.errors) : "请至少填写日期和问题！", "warning");
     return;
   }
+  const payload = checked.payload || rawPayload;
 
   const btn = document.getElementById("submitBtn");
   const oldText = btn ? btn.innerText : "";

@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script src="/assets/js/ticket-config.js"></script>
 <script src="/assets/js/ticket-auth.js"></script>
 <script src="/assets/js/ticket-validation.js"></script>
 <script src="/assets/js/ticket-import-preview.js"></script>
@@ -22,6 +23,7 @@
 <script src="/assets/js/ticket-settings-tools.js"></script>
 <script src="/assets/js/ticket-table-view.js"></script>
 <script src="/assets/js/ticket-stats-view.js"></script>
+<script src="/assets/js/ticket-fold-state.js"></script>
 <link rel="stylesheet" href="/assets/app.css"/>
 
 </head>
@@ -40,7 +42,7 @@
 
 
 
-<details class="card fold-card" id="settingsCard">
+<details class="card fold-card" id="settingsCard" data-fold-key="settings-main">
   <summary>
     <div class="fold-title-wrap">
       <h2 class="fold-title">系统设置</h2>
@@ -51,7 +53,7 @@
 
   <div class="fold-body">
   <div class="settings-group compact">
-    <details class="settings-item" id="settingsEditKey">
+    <details class="settings-item" id="settingsEditKey" data-fold-key="settings-edit-key">
       <summary class="settings-summary">
         <div class="settings-left">
           <div class="settings-title-row">
@@ -73,7 +75,7 @@
       </div>
     </details>
 
-    <details class="settings-item" id="settingsOneClick">
+    <details class="settings-item" id="settingsOneClick" data-fold-key="settings-one-click">
       <summary class="settings-summary">
         <div class="settings-left">
           <div class="settings-title-row">
@@ -98,7 +100,7 @@
   </div>
 </details>
 
-<details class="card fold-card compact-body">
+<details class="card fold-card compact-body" data-fold-key="health-main">
 <summary>
 <div class="fold-title-wrap">
 <h2 class="fold-title">系统健康检查</h2>
@@ -112,7 +114,7 @@
 </details>
 
 <!-- 筛选 & 月份视图 & 导出 / 备份操作 -->
-<details class="card fold-card">
+<details class="card fold-card" data-fold-key="query-export-main">
 <summary>
 <div class="fold-title-wrap">
 <h2 class="fold-title">查询 / 导出与备份</h2>
@@ -122,7 +124,7 @@
 </summary>
 <div class="fold-body">
 <!-- 常规模糊筛选 -->
-<details class="settings-item" style="margin-top:0;">
+<details class="settings-item" style="margin-top:0;" data-fold-key="filters-advanced">
 <summary class="settings-summary">
 <div class="settings-left">
 <div class="settings-title-row"><div class="settings-title">高级筛选</div></div>
@@ -170,7 +172,7 @@
 </div>
 </details>
 <!-- 导出 / 备份操作 -->
-<details class="settings-item" style="margin-top:12px;">
+<details class="settings-item" style="margin-top:12px;" data-fold-key="export-backup-actions">
 <summary class="settings-summary">
 <div class="settings-left">
 <div class="settings-title-row"><div class="settings-title">导出 / 备份操作</div></div>
@@ -201,7 +203,7 @@
 </details>
 <!-- 工单列表 + 图表区域 -->
 <div class="layout-two">
-<details class="card fold-card" open>
+<details class="card fold-card" open data-fold-key="tickets-main">
 <summary>
 <div class="fold-title-wrap">
 <h2 class="fold-title">工单列表</h2>
@@ -243,7 +245,7 @@
 <div class="pagination" id="pagination"></div>
 </div>
 </details>
-<details class="card stats-card fold-card">
+<details class="card stats-card fold-card" data-fold-key="stats-main">
 <summary>
 <div class="stats-head" style="flex:1 1 auto; width:100%;">
 <div>
@@ -287,30 +289,37 @@
 <div>
 <label>日期：</label>
 <input id="date" required="" type="date"/>
+<div class="field-error" id="dateError"></div>
 </div>
 <div>
 <label>问题：</label>
 <input id="issue" required="" type="text"/>
+<div class="field-error" id="issueError"></div>
 </div>
 <div>
 <label>部门：</label>
 <input id="department" type="text"/>
+<div class="field-error" id="departmentError"></div>
 </div>
 <div>
 <label>姓名：</label>
 <input id="name" type="text"/>
+<div class="field-error" id="nameError"></div>
 </div>
 <div>
 <label>处理方法：</label>
 <textarea id="solution"></textarea>
+<div class="field-error" id="solutionError"></div>
 </div>
 <div>
 <label>备注：</label>
 <textarea id="remarks"></textarea>
+<div class="field-error" id="remarksError"></div>
 </div>
 <div>
 <label>类型：</label>
 <select id="type">
+
 <option>日常故障</option>
 <option>office365套装故障</option>
 <option>OA等业务平台故障</option>
@@ -322,6 +331,7 @@
 <option>会议问题</option>
 <option>用户咨询</option>
 </select>
+<div class="field-error" id="typeError"></div>
 </div>
 
 <div class="ticket-modal-actions">

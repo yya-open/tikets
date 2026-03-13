@@ -1,6 +1,8 @@
     // 初始化
     
 (async function init() {
+  try { if (window.TicketValidation) window.TicketValidation.initFormValidationUI(); } catch (e) {}
+  try { if (window.TicketFoldState) window.TicketFoldState.init(); } catch (e) {}
   try { updateEditKeyStatus(); } catch (e) {}
   try { if (window.TicketHealth) { const health = await window.TicketHealth.load(); window.TicketHealth.render(health); } } catch (e) { console.warn(e); if (window.TicketHealth) window.TicketHealth.render({ ok:false }); }
 

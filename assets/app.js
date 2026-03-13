@@ -12,7 +12,7 @@
       editingUpdatedAtTs: { get: () => editingUpdatedAtTs, set: (v) => { editingUpdatedAtTs = Number(v || 0) || 0; } },
       nextId: { get: () => nextId, set: (v) => { nextId = Number(v || 1) || 1; } },
       viewMode: { get: () => viewMode, set: (v) => { viewMode = (v === "trash") ? "trash" : "active"; } },
-      pageSize: { get: () => pageSize, set: (v) => { pageSize = Number(v || 100) || 100; } },
+      pageSize: { get: () => pageSize, set: (v) => { const fallback = (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.pageSize) || 100; pageSize = Number(v || fallback) || fallback; } },
       currentPage: { get: () => currentPage, set: (v) => { currentPage = Number(v || 1) || 1; } }
     });
 
@@ -24,7 +24,7 @@
 
 
     // ===== 视图模式：工单 / 回收站 =====
-    const VIEW_MODE_STORAGE = "ticket_view_mode";
+    const VIEW_MODE_STORAGE = (window.TicketConfig && window.TicketConfig.storageKeys && window.TicketConfig.storageKeys.viewMode) || "ticket_view_mode";
     var viewMode = "active"; // 'active' | 'trash'
 
     function loadViewMode() {
