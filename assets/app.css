@@ -627,3 +627,11 @@ textarea.is-invalid{
   .ticket-detail-grid{ grid-template-columns: 1fr; }
   .quick-fill-label{ min-width:auto; width:100%; }
 }
+
+
+.ticket-row-clickable {
+  cursor: pointer;
+}
+.ticket-row-clickable:hover td {
+  background: rgba(59, 130, 246, 0.04);
+}

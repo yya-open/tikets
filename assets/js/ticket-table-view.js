@@ -386,6 +386,9 @@ async function renderTable({ resetPage = true } = {}) {
   } else {
     pageRecords.forEach(r => {
       const row = tbody.insertRow();
+      row.classList.add("ticket-row-clickable");
+      row.title = "双击查看详情";
+      row.ondblclick = () => openTicketDetail(r.id);
       row.insertCell(0).innerText = r.date;
       row.insertCell(1).innerText = r.issue;
       row.insertCell(2).innerText = r.department;
