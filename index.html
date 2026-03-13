@@ -187,6 +187,8 @@
 <div class="settings-desc">
 <div class="buttons">
 <button onclick="exportExcelCurrent()">导出当前筛选为 Excel（单 Sheet）</button>
+<button onclick="exportCurrentJson()">导出当前视图 JSON</button>
+<button onclick="exportSummaryExcel()">导出统计汇总 Excel</button>
 <button onclick="exportExcelByMonth()">按月份分 Sheet 导出 Excel</button>
 <button onclick="backupData()">导出 JSON 备份</button>
 <label style="font-size:13px; margin-left:4px;">
@@ -297,22 +299,36 @@
 </div>
 <div>
 <label>问题：</label>
-<input id="issue" required="" type="text"/>
+<input id="issue" required="" type="text" list="issueSuggestions"/>
+<div class="quick-fill-row">
+<label class="quick-fill-label" for="issueTemplateSelect">常用问题：</label>
+<select id="issueTemplateSelect" onchange="applyQuickTemplate('issue', this.value)">
+<option value="">选择常用问题模板</option>
+</select>
+<button type="button" class="secondary small" onclick="applySelectedTemplate('issue')">套用</button>
+</div>
 <div class="field-error" id="issueError"></div>
 </div>
 <div>
 <label>部门：</label>
-<input id="department" type="text"/>
+<input id="department" type="text" list="departmentSuggestions"/>
 <div class="field-error" id="departmentError"></div>
 </div>
 <div>
 <label>姓名：</label>
-<input id="name" type="text"/>
+<input id="name" type="text" list="nameSuggestions"/>
 <div class="field-error" id="nameError"></div>
 </div>
 <div>
 <label>处理方法：</label>
 <textarea id="solution"></textarea>
+<div class="quick-fill-row">
+<label class="quick-fill-label" for="solutionTemplateSelect">常用处理：</label>
+<select id="solutionTemplateSelect" onchange="applyQuickTemplate('solution', this.value)">
+<option value="">选择常用处理模板</option>
+</select>
+<button type="button" class="secondary small" onclick="applySelectedTemplate('solution')">套用</button>
+</div>
 <div class="field-error" id="solutionError"></div>
 </div>
 <div>
@@ -344,6 +360,23 @@
   <button type="button" onclick="closeTicketModal()">关闭</button>
 </div>
 </form></div>
+</div>
+<datalist id="issueSuggestions"></datalist>
+<datalist id="departmentSuggestions"></datalist>
+<datalist id="nameSuggestions"></datalist>
+<datalist id="solutionSuggestions"></datalist>
+
+<div class="ticket-modal-mask" id="ticketDetailModal" onclick="onTicketDetailMaskClick(event)">
+<div aria-labelledby="ticketDetailTitle" aria-modal="true" class="ticket-modal-panel ticket-detail-panel" role="dialog">
+<div class="ticket-modal-header">
+<h2 id="ticketDetailTitle">工单详情</h2>
+<button class="ticket-modal-close" onclick="closeTicketDetailModal()" type="button">×</button>
+</div>
+<div class="ticket-modal-body">
+<div id="ticketDetailBody"></div>
+<div class="ticket-modal-actions" id="ticketDetailActions"></div>
+</div>
+</div>
 </div>
 
 <!-- 写入口令设置（更正式 UI） -->

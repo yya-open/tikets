@@ -11,9 +11,94 @@ function getDefaultTicketType() {
   return (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.ticketType) || "日常故障";
 }
 
+function getQuickFillStore() {
+  const key = window.TicketConfig?.storageKeys?.quickFill || "ticket_quick_fill_v1";
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveQuickFillStore(store) {
+  const key = window.TicketConfig?.storageKeys?.quickFill || "ticket_quick_fill_v1";
+  try { localStorage.setItem(key, JSON.stringify(store || {})); } catch (_) {}
+}
+
+function mergeUniqueStrings(list, extra, limit) {
+  const seen = new Set();
+  const out = [];
+  (list || []).concat(extra || []).forEach((item) => {
+    const val = String(item || "").trim();
+    if (!val || seen.has(val)) return;
+    seen.add(val);
+    out.push(val);
+  });
+  return out.slice(0, limit);
+}
+
+function setDatalistOptions(id, values) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = (values || []).map(v => `<option value="${escapeHtml(v)}"></option>`).join("");
+}
+
+function setSelectOptions(id, placeholder, values) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<option value="">${placeholder}</option>` + (values || []).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+}
+
+function refreshQuickFillOptions() {
+  const store = getQuickFillStore();
+  const cfg = window.TicketConfig?.quickFill || {};
+  const limit = Number(cfg.recentLimit || 8) || 8;
+  const recs = Array.isArray(window.TicketAppState?.records) ? window.TicketAppState.records : [];
+
+  const issueRecent = mergeUniqueStrings(store.issueRecent, recs.map(r => r.issue), limit);
+  const deptRecent = mergeUniqueStrings(store.departmentRecent, recs.map(r => r.department), limit);
+  const nameRecent = mergeUniqueStrings(store.nameRecent, recs.map(r => r.name), limit);
+  const solutionRecent = mergeUniqueStrings(store.solutionRecent, recs.map(r => r.solution), limit);
+
+  setDatalistOptions("issueSuggestions", issueRecent);
+  setDatalistOptions("departmentSuggestions", deptRecent);
+  setDatalistOptions("nameSuggestions", nameRecent);
+  setDatalistOptions("solutionSuggestions", solutionRecent);
+
+  setSelectOptions("issueTemplateSelect", "选择常用问题模板", mergeUniqueStrings(cfg.issueTemplates, issueRecent, 20));
+  setSelectOptions("solutionTemplateSelect", "选择常用处理模板", mergeUniqueStrings(cfg.solutionTemplates, solutionRecent, 20));
+}
+
+function applyQuickTemplate(field, value) {
+  const input = document.getElementById(field);
+  if (!input || !value) return;
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function applySelectedTemplate(field) {
+  const select = document.getElementById(field === "issue" ? "issueTemplateSelect" : "solutionTemplateSelect");
+  if (!select) return;
+  applyQuickTemplate(field, select.value);
+}
+
+function rememberQuickFillValues(payload) {
+  const cfg = window.TicketConfig?.quickFill || {};
+  const limit = Number(cfg.recentLimit || 8) || 8;
+  const store = getQuickFillStore();
+  store.issueRecent = mergeUniqueStrings([payload.issue], store.issueRecent, limit);
+  store.departmentRecent = mergeUniqueStrings([payload.department], store.departmentRecent, limit);
+  store.nameRecent = mergeUniqueStrings([payload.name], store.nameRecent, limit);
+  store.solutionRecent = mergeUniqueStrings([payload.solution], store.solutionRecent, limit);
+  saveQuickFillStore(store);
+}
+
 function openTicketModal(reset = true) {
   const mask = document.getElementById("ticketModal");
   if (!mask) return;
+  refreshQuickFillOptions();
   mask.classList.add("show");
   if (reset) resetForm(true);
   if (window.TicketValidation) window.TicketValidation.initFormValidationUI();
@@ -47,6 +132,7 @@ function resetForm(resetEditing = true) {
 
 function fillFormFromRecord(record) {
   if (!record) return;
+  refreshQuickFillOptions();
   window.TicketAppState.editingId = record.id;
   window.TicketAppState.editingUpdatedAt = record.updated_at || "";
   window.TicketAppState.editingUpdatedAtTs = Number(record.updated_at_ts || 0) || 0;
@@ -130,6 +216,7 @@ async function addOrUpdateRecord() {
       document.getElementById("submitBtn").innerText = "确定";
     }
 
+    rememberQuickFillValues(payload);
     resetForm(false);
     await reloadAndRender();
     showToast("已保存到云端。", "success");

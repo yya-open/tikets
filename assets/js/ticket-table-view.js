@@ -1,3 +1,65 @@
+function escapeDetailValue(value) {
+  const v = String(value ?? "").trim();
+  return v ? escapeHtml(v) : '<span class="ticket-detail-empty">未填写</span>';
+}
+
+function closeTicketDetailModal() {
+  document.getElementById("ticketDetailModal")?.classList.remove("show");
+}
+
+function onTicketDetailMaskClick(e) {
+  if (e && e.target && e.target.id === "ticketDetailModal") closeTicketDetailModal();
+}
+
+function openTicketDetail(id) {
+  const record = (window.TicketAppState.records || []).find(r => r.id === id);
+  if (!record) return showToast("未找到该工单详情。", "warning");
+  const body = document.getElementById("ticketDetailBody");
+  const actions = document.getElementById("ticketDetailActions");
+  const mask = document.getElementById("ticketDetailModal");
+  if (!body || !actions || !mask) return;
+
+  body.innerHTML = `
+    <div class="ticket-detail-meta">
+      <span class="ticket-chip">ID：${escapeHtml(String(record.id || '-'))}</span>
+      <span class="ticket-chip">类型：${escapeHtml(record.type || '未分类')}</span>
+      <span class="ticket-chip">日期：${escapeHtml(record.date || '-')}</span>
+    </div>
+    <div class="ticket-detail-grid">
+      <div class="ticket-detail-item"><div class="ticket-detail-label">问题</div><div class="ticket-detail-value">${escapeDetailValue(record.issue)}</div></div>
+      <div class="ticket-detail-item"><div class="ticket-detail-label">部门</div><div class="ticket-detail-value">${escapeDetailValue(record.department)}</div></div>
+      <div class="ticket-detail-item"><div class="ticket-detail-label">姓名</div><div class="ticket-detail-value">${escapeDetailValue(record.name)}</div></div>
+      <div class="ticket-detail-item"><div class="ticket-detail-label">最后更新时间</div><div class="ticket-detail-value">${escapeDetailValue(formatISOToLocal(record.updated_at || ''))}</div></div>
+      <div class="ticket-detail-item full"><div class="ticket-detail-label">处理方法</div><div class="ticket-detail-value">${escapeDetailValue(record.solution)}</div></div>
+      <div class="ticket-detail-item full"><div class="ticket-detail-label">备注</div><div class="ticket-detail-value">${escapeDetailValue(record.remarks)}</div></div>
+    </div>`;
+
+  actions.innerHTML = '';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = '关闭';
+  closeBtn.onclick = closeTicketDetailModal;
+  actions.appendChild(closeBtn);
+
+  if (viewMode === 'trash') {
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button';
+    restoreBtn.className = 'secondary';
+    restoreBtn.textContent = '恢复';
+    restoreBtn.onclick = async () => { closeTicketDetailModal(); await restoreRecord(record.id); };
+    actions.insertBefore(restoreBtn, closeBtn);
+  } else {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary';
+    editBtn.textContent = '编辑';
+    editBtn.onclick = () => { closeTicketDetailModal(); editRecord(record.id); };
+    actions.insertBefore(editBtn, closeBtn);
+  }
+
+  mask.classList.add('show');
+}
+
 var activeYear = ""; // 当前选择的年份（字符串，如 "2025"）
     let activeMonth = ""; // 当前选择的月份（字符串，"01" ~ "12"）
 
@@ -334,6 +396,11 @@ async function renderTable({ resetPage = true } = {}) {
       const actionCell = row.insertCell(7);
 
       if (viewMode === "trash") {
+        const viewBtn = document.createElement("button");
+        viewBtn.innerText = "查看";
+        viewBtn.className = "small secondary";
+        viewBtn.onclick = () => openTicketDetail(r.id);
+
         const restoreBtn = document.createElement("button");
         restoreBtn.innerText = "恢复";
         restoreBtn.className = "small";
@@ -344,9 +411,15 @@ async function renderTable({ resetPage = true } = {}) {
         hardBtn.className = "small danger";
         hardBtn.onclick = () => hardDeleteRecord(r.id);
 
+        actionCell.appendChild(viewBtn);
         actionCell.appendChild(restoreBtn);
         actionCell.appendChild(hardBtn);
       } else {
+        const viewBtn = document.createElement("button");
+        viewBtn.innerText = "查看";
+        viewBtn.className = "small secondary";
+        viewBtn.onclick = () => openTicketDetail(r.id);
+
         const editBtn = document.createElement("button");
         editBtn.innerText = "编辑";
         editBtn.className = "small";
@@ -357,6 +430,7 @@ async function renderTable({ resetPage = true } = {}) {
         delBtn.className = "small danger";
         delBtn.onclick = () => deleteRecord(r.id);
 
+        actionCell.appendChild(viewBtn);
         actionCell.appendChild(editBtn);
         actionCell.appendChild(delBtn);
       }
