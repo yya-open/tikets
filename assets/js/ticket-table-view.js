@@ -4,31 +4,25 @@ function escapeDetailValue(value) {
 }
 
 function closeTicketDetailModal() {
-  document.getElementById("ticketDetailModal")?.classList.remove("show");
+  const overlay = document.getElementById("modalOverlay");
+  const titleEl = document.getElementById("modalTitle");
+  const bodyEl = document.getElementById("modalBody");
+  const footerEl = document.getElementById("modalFooter");
+  if (!overlay || !titleEl || !bodyEl || !footerEl) return;
+  overlay.classList.remove("show");
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.onclick = null;
+  bodyEl.innerHTML = "";
+  footerEl.innerHTML = "";
 }
 
 function onTicketDetailMaskClick(e) {
-  if (e && e.target && e.target.id === "ticketDetailModal") closeTicketDetailModal();
+  const overlay = document.getElementById("modalOverlay");
+  if (overlay && e && e.target === overlay) closeTicketDetailModal();
 }
 
-function openTicketDetail(id) {
-  const record = (window.TicketAppState.records || []).find(r => r.id === id);
-  if (!record) return showToast("未找到该工单详情。", "warning");
-  const body = document.getElementById("ticketDetailBody");
-  const actions = document.getElementById("ticketDetailActions");
-  const mask = document.getElementById("ticketDetailModal");
-  if (!body || !actions || !mask) {
-    try { alert(`日期：${record.date || '-'}
-类型：${record.type || '未分类'}
-问题：${record.issue || '未填写'}
-部门：${record.department || '未填写'}
-姓名：${record.name || '未填写'}
-处理方法：${record.solution || '未填写'}
-备注：${record.remarks || '未填写'}`); } catch (e) {}
-    return;
-  }
-
-  body.innerHTML = `
+function renderTicketDetailHtml(record) {
+  return `
     <div class="ticket-detail-meta">
       <span class="ticket-chip">ID：${escapeHtml(String(record.id || '-'))}</span>
       <span class="ticket-chip">类型：${escapeHtml(record.type || '未分类')}</span>
@@ -42,31 +36,66 @@ function openTicketDetail(id) {
       <div class="ticket-detail-item full"><div class="ticket-detail-label">处理方法</div><div class="ticket-detail-value">${escapeDetailValue(record.solution)}</div></div>
       <div class="ticket-detail-item full"><div class="ticket-detail-label">备注</div><div class="ticket-detail-value">${escapeDetailValue(record.remarks)}</div></div>
     </div>`;
+}
 
-  actions.innerHTML = '';
+function openTicketDetail(id) {
+  const record = (window.TicketAppState.records || []).find(r => r.id === id);
+  if (!record) return showToast("未找到该工单详情。", "warning");
+
+  const overlay = document.getElementById("modalOverlay");
+  const titleEl = document.getElementById("modalTitle");
+  const bodyEl = document.getElementById("modalBody");
+  const footerEl = document.getElementById("modalFooter");
+
+  if (!overlay || !titleEl || !bodyEl || !footerEl) {
+    try {
+      alert(`日期：${record.date || '-'}
+类型：${record.type || '未分类'}
+问题：${record.issue || '未填写'}
+部门：${record.department || '未填写'}
+姓名：${record.name || '未填写'}
+处理方法：${record.solution || '未填写'}
+备注：${record.remarks || '未填写'}`);
+    } catch (e) {}
+    return;
+  }
+
+  titleEl.textContent = '工单详情';
+  bodyEl.innerHTML = renderTicketDetailHtml(record);
+  footerEl.innerHTML = '';
+
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
+  closeBtn.className = 'm-btn secondary';
   closeBtn.textContent = '关闭';
   closeBtn.onclick = closeTicketDetailModal;
-  actions.appendChild(closeBtn);
 
   if (viewMode === 'trash') {
     const restoreBtn = document.createElement('button');
     restoreBtn.type = 'button';
-    restoreBtn.className = 'secondary';
+    restoreBtn.className = 'm-btn primary';
     restoreBtn.textContent = '恢复';
-    restoreBtn.onclick = async () => { closeTicketDetailModal(); await restoreRecord(record.id); };
-    actions.insertBefore(restoreBtn, closeBtn);
+    restoreBtn.onclick = async function () {
+      closeTicketDetailModal();
+      await restoreRecord(record.id);
+    };
+    footerEl.appendChild(restoreBtn);
   } else {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
-    editBtn.className = 'secondary';
+    editBtn.className = 'm-btn primary';
     editBtn.textContent = '编辑';
-    editBtn.onclick = () => { closeTicketDetailModal(); editRecord(record.id); };
-    actions.insertBefore(editBtn, closeBtn);
+    editBtn.onclick = function () {
+      closeTicketDetailModal();
+      editRecord(record.id);
+    };
+    footerEl.appendChild(editBtn);
   }
 
-  mask.classList.add('show');
+  footerEl.appendChild(closeBtn);
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.classList.add('show');
+  overlay.onclick = function (e) { if (e.target === overlay) closeTicketDetailModal(); };
 }
 
 window.openTicketDetail = openTicketDetail;
