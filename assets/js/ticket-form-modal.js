@@ -45,11 +45,6 @@ function setDatalistOptions(id, values) {
   el.innerHTML = (values || []).map(v => `<option value="${escapeHtml(v)}"></option>`).join("");
 }
 
-function setSelectOptions(id, placeholder, values) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = `<option value="">${placeholder}</option>` + (values || []).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-}
 
 function refreshQuickFillOptions() {
   const store = getQuickFillStore();
@@ -67,22 +62,8 @@ function refreshQuickFillOptions() {
   setDatalistOptions("nameSuggestions", nameRecent);
   setDatalistOptions("solutionSuggestions", solutionRecent);
 
-  setSelectOptions("issueTemplateSelect", "选择常用问题模板", mergeUniqueStrings(cfg.issueTemplates, issueRecent, 20));
-  setSelectOptions("solutionTemplateSelect", "选择常用处理模板", mergeUniqueStrings(cfg.solutionTemplates, solutionRecent, 20));
 }
 
-function applyQuickTemplate(field, value) {
-  const input = document.getElementById(field);
-  if (!input || !value) return;
-  input.value = value;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function applySelectedTemplate(field) {
-  const select = document.getElementById(field === "issue" ? "issueTemplateSelect" : "solutionTemplateSelect");
-  if (!select) return;
-  applyQuickTemplate(field, select.value);
-}
 
 function rememberQuickFillValues(payload) {
   const cfg = window.TicketConfig?.quickFill || {};

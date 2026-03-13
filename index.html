@@ -300,13 +300,6 @@
 <div>
 <label>问题：</label>
 <input id="issue" required="" type="text" list="issueSuggestions"/>
-<div class="quick-fill-row">
-<label class="quick-fill-label" for="issueTemplateSelect">常用问题：</label>
-<select id="issueTemplateSelect" onchange="applyQuickTemplate('issue', this.value)">
-<option value="">选择常用问题模板</option>
-</select>
-<button type="button" class="secondary small" onclick="applySelectedTemplate('issue')">套用</button>
-</div>
 <div class="field-error" id="issueError"></div>
 </div>
 <div>
@@ -322,13 +315,6 @@
 <div>
 <label>处理方法：</label>
 <textarea id="solution"></textarea>
-<div class="quick-fill-row">
-<label class="quick-fill-label" for="solutionTemplateSelect">常用处理：</label>
-<select id="solutionTemplateSelect" onchange="applyQuickTemplate('solution', this.value)">
-<option value="">选择常用处理模板</option>
-</select>
-<button type="button" class="secondary small" onclick="applySelectedTemplate('solution')">套用</button>
-</div>
 <div class="field-error" id="solutionError"></div>
 </div>
 <div>
