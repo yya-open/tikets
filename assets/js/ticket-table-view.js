@@ -147,9 +147,7 @@ function clamp(num, min, max) {
       // 仅用于：年/月可用性与总量展示（不受筛选影响）
       const sp = new URLSearchParams();
       if (viewMode === "trash") sp.set("trash", "1");
-      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`meta stats failed: ${res.status}`);
-      const j = await res.json();
+      const j = await window.TicketService.loadMeta(viewMode);
       metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
       metaTotalAll = Number(j?.total_all ?? 0) || 0;
     }
@@ -165,9 +163,7 @@ function clamp(num, min, max) {
         sp.set("direction", cursorNav.direction || "next");
       }
 
-      const res = await authedFetch(`/api/tickets?${sp.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`load failed: ${res.status}`);
-      const j = await res.json();
+      const j = await window.TicketService.loadTickets(sp);
 
       const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
       records = normalizeRecords(arr);
@@ -197,9 +193,7 @@ function clamp(num, min, max) {
       lastStatsKey = key;
 
       const sp = buildFilters({ includeYearMonth: true });
-      const res = await fetch(`/api/stats?${sp.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`stats failed: ${res.status}`);
-      cachedStats = await res.json();
+      cachedStats = await window.TicketService.loadStats(sp);
       return cachedStats;
     }
 
@@ -233,8 +227,7 @@ async function deleteRecord(id) {
   if (!ok) return;
 
   try {
-    const res = await authedFetch(`/api/tickets/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+    await window.TicketService.deleteTicket(id);
 
     if (editingId === id) resetForm();
     await reloadAndRender();
@@ -256,8 +249,7 @@ async function restoreRecord(id) {
   });
   if (!ok) return;
   try {
-    const res = await authedFetch(`/api/tickets/${id}/restore`, { method: "PUT" });
-    if (!res.ok) throw new Error(`restore failed: ${res.status}`);
+    await window.TicketService.restoreTicket(id);
     await reloadAndRender();
     showToast("已恢复该工单。", "success");
   } catch (e) {
@@ -277,8 +269,7 @@ async function hardDeleteRecord(id) {
   });
   if (!ok) return;
   try {
-    const res = await authedFetch(`/api/tickets/${id}/hard`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`hard delete failed: ${res.status}`);
+    await window.TicketService.hardDeleteTicket(id);
     await reloadAndRender();
     showToast("已彻底删除。", "success");
   } catch (e) {

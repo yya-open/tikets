@@ -94,18 +94,9 @@ async function addOrUpdateRecord() {
 
   try {
     if (state.editingId === null) {
-      const res = await authedFetch("/api/tickets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error(`create failed: ${res.status}`);
+      await window.TicketService.createTicket(payload);
     } else {
-      let res = await authedFetch(`/api/tickets/${state.editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, id: state.editingId, updated_at: state.editingUpdatedAt, updated_at_ts: state.editingUpdatedAtTs })
-      });
+      let res = await window.TicketService.updateTicket(state.editingId, { ...payload, id: state.editingId, updated_at: state.editingUpdatedAt, updated_at_ts: state.editingUpdatedAtTs });
 
       if (res.status === 409) {
         let info = null;
@@ -129,11 +120,7 @@ async function addOrUpdateRecord() {
           showToast("已加载最新版本，请确认后重新编辑保存。", "info");
           return;
         }
-        res = await authedFetch(`/api/tickets/${state.editingId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, id: state.editingId, force: true })
-        });
+        res = await window.TicketService.updateTicket(state.editingId, { ...payload, id: state.editingId, force: true });
       }
 
       if (!res.ok) throw new Error(`update failed: ${res.status}`);
