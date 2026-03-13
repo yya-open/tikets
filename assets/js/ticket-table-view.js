@@ -60,6 +60,38 @@ function openTicketDetail(id) {
   mask.classList.add('show');
 }
 
+window.openTicketDetail = openTicketDetail;
+window.closeTicketDetailModal = closeTicketDetailModal;
+window.onTicketDetailMaskClick = onTicketDetailMaskClick;
+
+function bindTableDetailInteractions() {
+  const table = document.getElementById('recordTable');
+  if (!table || table.dataset.detailBound === '1') return;
+  table.dataset.detailBound = '1';
+
+  table.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const id = Number(btn.getAttribute('data-id'));
+    if (!Number.isFinite(id)) return;
+    if (action === 'view') return openTicketDetail(id);
+    if (action === 'edit') return editRecord(id);
+    if (action === 'delete') return deleteRecord(id);
+    if (action === 'restore') return restoreRecord(id);
+    if (action === 'hard-delete') return hardDeleteRecord(id);
+  });
+
+  table.addEventListener('dblclick', function (e) {
+    const row = e.target && e.target.closest ? e.target.closest('tbody tr[data-ticket-id]') : null;
+    if (!row) return;
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+    const id = Number(row.getAttribute('data-ticket-id'));
+    if (!Number.isFinite(id)) return;
+    openTicketDetail(id);
+  });
+}
+
 var activeYear = ""; // 当前选择的年份（字符串，如 "2025"）
     let activeMonth = ""; // 当前选择的月份（字符串，"01" ~ "12"）
 
@@ -352,6 +384,7 @@ async function hardDeleteRecord(id) {
 
 async function renderTable({ resetPage = true } = {}) {
   const tbody = document.getElementById("recordTable").querySelector("tbody");
+  bindTableDetailInteractions();
   tbody.innerHTML = "";
 
   // 若筛选条件/视图变化，则清空游标分页状态
@@ -386,9 +419,9 @@ async function renderTable({ resetPage = true } = {}) {
   } else {
     pageRecords.forEach(r => {
       const row = tbody.insertRow();
-      row.classList.add("ticket-row-clickable");
-      row.title = "双击查看详情";
-      row.ondblclick = () => openTicketDetail(r.id);
+      row.dataset.ticketId = String(r.id);
+      row.title = '双击查看详情';
+      row.style.cursor = 'pointer';
       row.insertCell(0).innerText = r.date;
       row.insertCell(1).innerText = r.issue;
       row.insertCell(2).innerText = r.department;
@@ -400,38 +433,50 @@ async function renderTable({ resetPage = true } = {}) {
 
       if (viewMode === "trash") {
         const viewBtn = document.createElement("button");
+        viewBtn.type = 'button';
         viewBtn.innerText = "查看";
         viewBtn.className = "small secondary";
-        viewBtn.onclick = () => openTicketDetail(r.id);
+        viewBtn.dataset.action = 'view';
+        viewBtn.dataset.id = String(r.id);
 
         const restoreBtn = document.createElement("button");
+        restoreBtn.type = 'button';
         restoreBtn.innerText = "恢复";
         restoreBtn.className = "small";
-        restoreBtn.onclick = () => restoreRecord(r.id);
+        restoreBtn.dataset.action = 'restore';
+        restoreBtn.dataset.id = String(r.id);
 
         const hardBtn = document.createElement("button");
+        hardBtn.type = 'button';
         hardBtn.innerText = "彻底删除";
         hardBtn.className = "small danger";
-        hardBtn.onclick = () => hardDeleteRecord(r.id);
+        hardBtn.dataset.action = 'hard-delete';
+        hardBtn.dataset.id = String(r.id);
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(restoreBtn);
         actionCell.appendChild(hardBtn);
       } else {
         const viewBtn = document.createElement("button");
+        viewBtn.type = 'button';
         viewBtn.innerText = "查看";
         viewBtn.className = "small secondary";
-        viewBtn.onclick = () => openTicketDetail(r.id);
+        viewBtn.dataset.action = 'view';
+        viewBtn.dataset.id = String(r.id);
 
         const editBtn = document.createElement("button");
+        editBtn.type = 'button';
         editBtn.innerText = "编辑";
         editBtn.className = "small";
-        editBtn.onclick = () => editRecord(r.id);
+        editBtn.dataset.action = 'edit';
+        editBtn.dataset.id = String(r.id);
 
         const delBtn = document.createElement("button");
+        delBtn.type = 'button';
         delBtn.innerText = "删除";
         delBtn.className = "small danger";
-        delBtn.onclick = () => deleteRecord(r.id);
+        delBtn.dataset.action = 'delete';
+        delBtn.dataset.id = String(r.id);
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(editBtn);

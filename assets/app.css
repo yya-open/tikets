@@ -629,9 +629,5 @@ textarea.is-invalid{
 }
 
 
-.ticket-row-clickable {
-  cursor: pointer;
-}
-.ticket-row-clickable:hover td {
-  background: rgba(59, 130, 246, 0.04);
-}
+#recordTable tbody tr[data-ticket-id]:hover{ background:#f7fbff; }
+#recordTable tbody tr[data-ticket-id] button{ position:relative; z-index:1; }
