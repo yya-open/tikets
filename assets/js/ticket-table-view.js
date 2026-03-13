@@ -17,7 +17,16 @@ function openTicketDetail(id) {
   const body = document.getElementById("ticketDetailBody");
   const actions = document.getElementById("ticketDetailActions");
   const mask = document.getElementById("ticketDetailModal");
-  if (!body || !actions || !mask) return;
+  if (!body || !actions || !mask) {
+    try { alert(`日期：${record.date || '-'}
+类型：${record.type || '未分类'}
+问题：${record.issue || '未填写'}
+部门：${record.department || '未填写'}
+姓名：${record.name || '未填写'}
+处理方法：${record.solution || '未填写'}
+备注：${record.remarks || '未填写'}`); } catch (e) {}
+    return;
+  }
 
   body.innerHTML = `
     <div class="ticket-detail-meta">
@@ -422,6 +431,10 @@ async function renderTable({ resetPage = true } = {}) {
       row.dataset.ticketId = String(r.id);
       row.title = '双击查看详情';
       row.style.cursor = 'pointer';
+      row.ondblclick = function (e) {
+        if (e && e.target && e.target.closest && e.target.closest('button')) return;
+        openTicketDetail(Number(r.id));
+      };
       row.insertCell(0).innerText = r.date;
       row.insertCell(1).innerText = r.issue;
       row.insertCell(2).innerText = r.department;
@@ -438,6 +451,7 @@ async function renderTable({ resetPage = true } = {}) {
         viewBtn.className = "small secondary";
         viewBtn.dataset.action = 'view';
         viewBtn.dataset.id = String(r.id);
+        viewBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); openTicketDetail(Number(r.id)); return false; };
 
         const restoreBtn = document.createElement("button");
         restoreBtn.type = 'button';
@@ -445,6 +459,7 @@ async function renderTable({ resetPage = true } = {}) {
         restoreBtn.className = "small";
         restoreBtn.dataset.action = 'restore';
         restoreBtn.dataset.id = String(r.id);
+        restoreBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); restoreRecord(Number(r.id)); };
 
         const hardBtn = document.createElement("button");
         hardBtn.type = 'button';
@@ -452,6 +467,7 @@ async function renderTable({ resetPage = true } = {}) {
         hardBtn.className = "small danger";
         hardBtn.dataset.action = 'hard-delete';
         hardBtn.dataset.id = String(r.id);
+        hardBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); hardDeleteRecord(Number(r.id)); };
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(restoreBtn);
@@ -463,6 +479,7 @@ async function renderTable({ resetPage = true } = {}) {
         viewBtn.className = "small secondary";
         viewBtn.dataset.action = 'view';
         viewBtn.dataset.id = String(r.id);
+        viewBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); openTicketDetail(Number(r.id)); return false; };
 
         const editBtn = document.createElement("button");
         editBtn.type = 'button';
@@ -470,6 +487,7 @@ async function renderTable({ resetPage = true } = {}) {
         editBtn.className = "small";
         editBtn.dataset.action = 'edit';
         editBtn.dataset.id = String(r.id);
+        editBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); editRecord(Number(r.id)); };
 
         const delBtn = document.createElement("button");
         delBtn.type = 'button';
@@ -477,6 +495,7 @@ async function renderTable({ resetPage = true } = {}) {
         delBtn.className = "small danger";
         delBtn.dataset.action = 'delete';
         delBtn.dataset.id = String(r.id);
+        delBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); deleteRecord(Number(r.id)); };
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(editBtn);
