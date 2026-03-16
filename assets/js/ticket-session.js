@@ -36,27 +36,27 @@ const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
 
 function getEditKey() {
   if (window.TicketAuth && typeof window.TicketAuth.get === "function") return window.TicketAuth.get();
-  try { return sessionStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
+  try { return localStorage.getItem(EDIT_KEY_STORAGE) || ""; } catch { return ""; }
 }
 function setEditKey(key) {
   if (window.TicketAuth && typeof window.TicketAuth.set === "function") return window.TicketAuth.set(key);
-  try { sessionStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
+  try { localStorage.setItem(EDIT_KEY_STORAGE, String(key || "")); } catch {}
 }
 function clearEditKey() {
   if (window.TicketAuth && typeof window.TicketAuth.clear === "function") return window.TicketAuth.clear();
-  try { sessionStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
+  try { localStorage.removeItem(EDIT_KEY_STORAGE); } catch {}
 }
 function getEditKeySetAt() {
   if (window.TicketAuth && typeof window.TicketAuth.getSetAt === "function") return window.TicketAuth.getSetAt();
-  try { return sessionStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
+  try { return localStorage.getItem(EDIT_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
 }
 function setEditKeySetAtNow() {
   if (window.TicketAuth && typeof window.TicketAuth.setSetAtNow === "function") return window.TicketAuth.setSetAtNow();
-  try { sessionStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
+  try { localStorage.setItem(EDIT_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
 }
 function clearEditKeySetAt() {
   if (window.TicketAuth && typeof window.TicketAuth.clearSetAt === "function") return window.TicketAuth.clearSetAt();
-  try { sessionStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
+  try { localStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
 }
 
 let __editKeyWaiters = [];
@@ -138,7 +138,7 @@ function saveEditKeyFromUI() {
   setEditKeySetAtNow();
   updateEditKeyStatus();
   resolveEditKeyWaiters(key);
-  if (typeof showToast === "function") showToast("写入口令已保存（仅当前浏览器）。", "success");
+  if (typeof showToast === "function") showToast("写入口令已保存（当前浏览器 7 天内有效）。", "success");
 }
 
 function clearEditKeyFromUI() {
