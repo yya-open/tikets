@@ -104,12 +104,26 @@ async function exportExcelCurrent() {
     if (!records.length) return showToast('当前视图没有可导出的记录。', 'warning');
 
     const rows = makeExcelRows(records);
+    const { byType } = buildSummaryRows(records);
+    const typeRows = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([类型, 数量]) => ({ 类型, 数量 }));
+    const totalRows = [
+      { 类型: '合计', 数量: records.length },
+      ...typeRows,
+    ];
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     autoFitWorksheetColumns(ws, rows);
     XLSX.utils.book_append_sheet(wb, ws, '当前筛选');
+
+    const totalWs = XLSX.utils.json_to_sheet(totalRows);
+    autoFitWorksheetColumns(totalWs, totalRows);
+    XLSX.utils.book_append_sheet(wb, totalWs, '类型汇总');
+
     XLSX.writeFile(wb, `工单当前筛选_${getTodayStamp()}.xlsx`);
-    showToast(`已导出当前筛选 Excel（${records.length} 条）。`, 'success');
+    showToast(`已导出当前筛选 Excel（${records.length} 条，含类型汇总）。`, 'success');
   } catch (e) {
     if (isNoKeyError(e)) return;
     console.error(e);
@@ -128,17 +142,30 @@ async function exportExcelByMonth() {
       (groups[key] ||= []).push(r);
     });
 
+    const { byType } = buildSummaryRows(records);
+    const typeRows = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([类型, 数量]) => ({ 类型, 数量 }));
+    const totalRows = [
+      { 类型: '合计', 数量: records.length },
+      ...typeRows,
+    ];
+
     const wb = XLSX.utils.book_new();
+    const totalWs = XLSX.utils.json_to_sheet(totalRows);
+    autoFitWorksheetColumns(totalWs, totalRows);
+    XLSX.utils.book_append_sheet(wb, totalWs, '类型汇总');
+
     Object.keys(groups).sort().forEach((monthKey) => {
       const rows = makeExcelRows(groups[monthKey]);
       const ws = XLSX.utils.json_to_sheet(rows);
       autoFitWorksheetColumns(ws, rows);
-      const safeSheetName = monthKey.replace(/[\\/*?:\[\]]/g, '_').slice(0, 31) || 'Sheet';
+      const safeSheetName = monthKey.replace(/[\/*?:\[\]]/g, '_').slice(0, 31) || 'Sheet';
       XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
     });
 
     XLSX.writeFile(wb, `工单按月导出_${getTodayStamp()}.xlsx`);
-    showToast(`已按月份分 Sheet 导出 Excel（${records.length} 条）。`, 'success');
+    showToast(`已按月份分 Sheet 导出 Excel（${records.length} 条，含类型汇总）。`, 'success');
   } catch (e) {
     if (isNoKeyError(e)) return;
     console.error(e);
