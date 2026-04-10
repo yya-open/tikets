@@ -12,9 +12,15 @@
     return await res.json();
   }
 
+  function getAuthedFetch() {
+    if (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') return window.TicketApi.authedFetch.bind(window.TicketApi);
+    if (typeof window.authedFetch === 'function') return window.authedFetch.bind(window);
+    return fetch.bind(window);
+  }
+
   async function loadTickets(searchParams) {
     const query = searchParams instanceof URLSearchParams ? searchParams.toString() : String(searchParams || '');
-    const res = await window.TicketApi.authedFetch(`/api/tickets?${query}`, { cache: 'no-store' });
+    const res = await getAuthedFetch()(`/api/tickets?${query}`, { cache: 'no-store' });
     ensureOk(res, 'load tickets');
     return await res.json();
   }
@@ -27,7 +33,7 @@
   }
 
   async function createTicket(payload) {
-    const res = await window.TicketApi.authedFetch('/api/tickets', {
+    const res = await getAuthedFetch()('/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload || {})
@@ -37,7 +43,7 @@
   }
 
   async function updateTicket(id, payload) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}`, {
+    const res = await getAuthedFetch()(`/api/tickets/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload || {})
@@ -46,19 +52,19 @@
   }
 
   async function deleteTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}`, { method: 'DELETE' });
+    const res = await getAuthedFetch()(`/api/tickets/${id}`, { method: 'DELETE' });
     ensureOk(res, 'delete ticket');
     return await res.json().catch(() => ({}));
   }
 
   async function restoreTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}/restore`, { method: 'PUT' });
+    const res = await getAuthedFetch()(`/api/tickets/${id}/restore`, { method: 'PUT' });
     ensureOk(res, 'restore ticket');
     return await res.json().catch(() => ({}));
   }
 
   async function hardDeleteTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}/hard`, { method: 'DELETE' });
+    const res = await getAuthedFetch()(`/api/tickets/${id}/hard`, { method: 'DELETE' });
     ensureOk(res, 'hard delete ticket');
     return await res.json().catch(() => ({}));
   }
