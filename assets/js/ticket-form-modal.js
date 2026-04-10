@@ -202,9 +202,14 @@ async function addOrUpdateRecord() {
     await reloadAndRender();
     showToast("已保存到云端。", "success");
   } catch (e) {
-    if (isNoKeyError(e)) return;
+    if (isNoKeyError(e)) {
+      if (typeof openKeyModal === 'function') openKeyModal();
+      showToast("保存失败：写入口令无效或已失效，请重新输入。", "error");
+      return;
+    }
     console.error(e);
-    showToast("保存失败：请检查网络或后端是否正常。", "error");
+    const msg = e && e.status === 500 ? "保存失败：服务端未配置 EDIT_KEY。" : "保存失败：请检查网络或后端是否正常。";
+    showToast(msg, "error");
   } finally {
     if (btn) {
       btn.disabled = false;

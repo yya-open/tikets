@@ -203,8 +203,10 @@ async function authedFetch(url, options = {}) {
 }
 
 function isNoKeyError(err) {
+  const status = Number(err && err.status);
+  const code = String((err && err.code) || '');
   const msg = String((err && err.message) || err || "");
-  return /\b401\b/.test(msg) || /Unauthorized/i.test(msg);
+  return status === 401 || status === 403 || /\b401\b/.test(msg) || /\b403\b/.test(msg) || /Unauthorized/i.test(msg) || /invalid_edit_key/i.test(msg) || code === 'missing_edit_key' || code === 'invalid_edit_key';
 }
 
 window.loadViewMode = loadViewMode;
