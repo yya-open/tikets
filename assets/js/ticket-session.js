@@ -27,6 +27,9 @@ async function toggleTrashView() {
   viewMode = viewMode === "trash" ? "active" : "trash";
   saveViewMode();
   updateViewModeUI();
+  if (window.TicketQueryRuntime && typeof window.TicketQueryRuntime.invalidateStatsCache === 'function') {
+    window.TicketQueryRuntime.invalidateStatsCache();
+  }
   await reloadAndRender({ showLoadedToast: true });
 }
 
@@ -193,33 +196,35 @@ async function testEditKey() {
 }
 
 async function authedFetch(url, options = {}) {
-  const method = String(options.method || "GET").toUpperCase();
-  const needAuth = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
-  if (!needAuth) return fetch(url, options);
-
-  const key = await ensureEditKey();
-  const headers = new Headers(options.headers || {});
-  if (key) headers.set("X-EDIT-KEY", key);
-
-  const res = await fetch(url, { ...options, headers });
-
-  if (res.status === 401 || res.status === 403) {
-    clearEditKey();
-    updateEditKeyStatus();
-    if (typeof showToast === "function") showToast("写入口令错误，请重新输入。", "error");
-  } else if (res.status === 500) {
-    try {
-      const t = await res.clone().text();
-      if (/EDIT_KEY|misconfigured/i.test(t)) {
-        if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY。", "error");
-      }
-    } catch {
-    }
+  if (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') {
+    return await window.TicketApi.authedFetch(url, options);
   }
-  return res;
+  return fetch(url, options);
 }
 
 function isNoKeyError(err) {
   const msg = String((err && err.message) || err || "");
   return /\b401\b/.test(msg) || /Unauthorized/i.test(msg);
 }
+
+window.loadViewMode = loadViewMode;
+window.saveViewMode = saveViewMode;
+window.updateViewModeUI = updateViewModeUI;
+window.toggleTrashView = toggleTrashView;
+window.getEditKey = getEditKey;
+window.setEditKey = setEditKey;
+window.clearEditKey = clearEditKey;
+window.getEditKeySetAt = getEditKeySetAt;
+window.setEditKeySetAtNow = setEditKeySetAtNow;
+window.clearEditKeySetAt = clearEditKeySetAt;
+window.updateEditKeyStatus = updateEditKeyStatus;
+window.openKeyModal = openKeyModal;
+window.closeKeyModal = closeKeyModal;
+window.onKeyModalMaskClick = onKeyModalMaskClick;
+window.toggleEditKeyVisibility = toggleEditKeyVisibility;
+window.saveEditKeyFromUI = saveEditKeyFromUI;
+window.clearEditKeyFromUI = clearEditKeyFromUI;
+window.ensureEditKey = ensureEditKey;
+window.testEditKey = testEditKey;
+window.authedFetch = authedFetch;
+window.isNoKeyError = isNoKeyError;

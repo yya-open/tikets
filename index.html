@@ -21,6 +21,7 @@
 <script src="/assets/js/ticket-dialogs.js"></script>
 <script src="/assets/js/ticket-session.js"></script>
 <script src="/assets/js/ticket-service.js"></script>
+<script src="/assets/js/ticket-query-runtime.js"></script>
 <script src="/assets/js/ticket-form-modal.js"></script>
 <script src="/assets/js/ticket-export-tools.js"></script>
 <script src="/assets/app.js"></script>
@@ -28,6 +29,7 @@
 <script src="/assets/js/ticket-table-view.js"></script>
 <script src="/assets/js/ticket-stats-view.js"></script>
 <script src="/assets/js/ticket-fold-state.js"></script>
+<script src="/assets/js/ticket-bindings.js"></script>
 <link rel="stylesheet" href="/assets/app.css"/>
 
 </head>
@@ -37,7 +39,7 @@
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
 <h2 style="margin:0;">工单操作</h2>
 <div style="display:flex;gap:10px;flex-wrap:wrap;">
-<button class="primary" onclick="openTicketModal(true)" type="button">新增工单</button>
+<button class="primary" id="btnOpenTicketModal" type="button">新增工单</button>
 </div>
 </div>
 <div class="muted" style="margin-top:8px;">点击“新增工单”在弹窗中录入/编辑</div>
@@ -68,8 +70,8 @@
         </div>
 
         <div class="settings-actions">
-          <button type="button" class="secondary" onclick="event.stopPropagation(); openKeyModal();">管理口令</button>
-          <button type="button" class="btn-ghost" onclick="event.stopPropagation(); testEditKey();">测试</button>
+          <button type="button" class="secondary" id="btnOpenKeyModal">管理口令</button>
+          <button type="button" class="btn-ghost" id="btnTestEditKey">测试</button>
         </div>
         <span class="settings-fold-arrow" aria-hidden="true"></span>
       </summary>
@@ -90,8 +92,8 @@
         </div>
 
         <div class="settings-actions">
-          <button id="btnOneClick" type="button" class="secondary" onclick="event.stopPropagation(); runOneClickInit();" disabled>一键执行</button>
-          <button type="button" class="btn-ghost" onclick="event.stopPropagation(); showOneClickDetails();">详情</button>
+          <button id="btnOneClick" type="button" class="secondary" disabled>一键执行</button>
+          <button type="button" class="btn-ghost" id="btnOneClickDetails">详情</button>
         </div>
         <span class="settings-fold-arrow" aria-hidden="true"></span>
       </summary>
@@ -168,9 +170,9 @@
 </div>
 </div>
 <div class="filters-actions">
-<button class="primary" onclick="renderTable()">应用筛选</button>
-<button onclick="clearFilters()">清空筛选</button>
-<button class="secondary" id="trashToggleBtn" type="button" onclick="toggleTrashView()">回收站</button>
+<button class="primary" id="btnApplyFilters">应用筛选</button>
+<button id="btnClearFilters">清空筛选</button>
+<button class="secondary" id="trashToggleBtn" type="button">回收站</button>
 <span id="viewModePill" class="pill" style="margin-left:6px;">工单</span>
 </div>
 </div>
@@ -186,21 +188,21 @@
 </summary>
 <div class="settings-desc">
 <div class="buttons">
-<button onclick="exportExcelCurrent()">导出当前筛选为 Excel（单 Sheet）</button>
-<button onclick="exportCurrentJson()">导出当前视图 JSON</button>
-<button onclick="exportSummaryExcel()">导出统计汇总 Excel</button>
-<button onclick="exportExcelByMonth()">按月份分 Sheet 导出 Excel</button>
-<button onclick="backupData()">导出 JSON 备份</button>
+<button id="btnExportExcelCurrent">导出当前筛选为 Excel（单 Sheet）</button>
+<button id="btnExportCurrentJson">导出当前视图 JSON</button>
+<button id="btnExportSummaryExcel">导出统计汇总 Excel</button>
+<button id="btnExportExcelByMonth">按月份分 Sheet 导出 Excel</button>
+<button id="btnBackupData">导出 JSON 备份</button>
 <label style="font-size:13px; margin-left:4px;">
           载入备份：
-          <input accept="application/json" onchange="loadBackup(event)" type="file"/>
+          <input accept="application/json" id="backupFileInput" type="file"/>
 </label>
-<button onclick="archiveByMonthJSON()">按月份导出 JSON（多文件）</button>
-<button onclick="exportYearZip()">打包年度 ZIP（全部月份 JSON）</button>
+<button id="btnArchiveByMonthJSON">按月份导出 JSON（多文件）</button>
+<button id="btnExportYearZip">打包年度 ZIP（全部月份 JSON）</button>
 </div>
 <!-- 手动目录备份（点击时选择目录并导出 JSON） -->
 <div style="margin-top:8px;font-size:13px;">
-<button onclick="manualBackup()">导出到本地目录</button>
+<button id="btnManualBackup">导出到本地目录</button>
 </div>
 </div>
 </details>
@@ -224,17 +226,31 @@
 <div class="month-nav">
 <div>
 <label for="yearSelect">年份：</label>
-<select id="yearSelect" onchange="onYearChange()">
+<select id="yearSelect">
 <option value="">全部年份</option>
 </select>
 </div>
 <div class="month-buttons" id="monthButtons"></div>
 </div>
 </div>
+<div class="batch-toolbar" id="batchToolbar">
+<div class="batch-toolbar-left">
+<label class="batch-select-all-wrap"><input type="checkbox" id="selectAllRows" /> 全选本页</label>
+<span class="batch-summary" id="batchSummary">未选择记录</span>
+</div>
+<div class="batch-toolbar-actions" id="batchToolbarActions">
+<button type="button" class="small secondary" id="btnBatchExportJson">导出选中 JSON</button>
+<button type="button" class="small secondary" id="btnBatchExportExcel">导出选中 Excel</button>
+<button type="button" class="small" id="btnBatchRestore">批量恢复</button>
+<button type="button" class="small danger" id="btnBatchDelete">批量删除</button>
+<button type="button" class="small danger" id="btnBatchHardDelete">批量彻底删除</button>
+</div>
+</div>
 <div class="table-wrap" id="tableWrap">
 <table id="recordTable">
 <thead>
 <tr>
+<th class="sel-col"><input type="checkbox" id="selectAllRowsHead" aria-label="全选本页工单" /></th>
 <th>日期</th>
 <th>问题</th>
 <th>部门</th>
@@ -285,13 +301,13 @@
 </details>
 </div>
 
-<div class="ticket-modal-mask" id="ticketModal" onclick="onTicketModalMaskClick(event)">
+<div class="ticket-modal-mask" id="ticketModal">
 <div aria-labelledby="ticketModalTitle" aria-modal="true" class="ticket-modal-panel" role="dialog">
 <div class="ticket-modal-header">
 <h2 id="ticketModalTitle">新增 / 编辑工单</h2>
-<button class="ticket-modal-close" onclick="closeTicketModal()" type="button">×</button>
+<button class="ticket-modal-close" id="ticketModalClose" type="button">×</button>
 </div>
-<div class="ticket-modal-body"><form id="ticketForm" onsubmit="event.preventDefault(); addOrUpdateRecord();">
+<div class="ticket-modal-body"><form id="ticketForm">
 <div>
 <label>日期：</label>
 <input id="date" required="" type="date"/>
@@ -342,8 +358,8 @@
 
 <div class="ticket-modal-actions">
   <button id="submitBtn" type="submit" class="primary">确定</button>
-  <button type="button" onclick="resetForm(true)">清空表单</button>
-  <button type="button" onclick="closeTicketModal()">关闭</button>
+  <button type="button" id="btnResetForm">清空表单</button>
+  <button type="button" id="btnCloseTicketModal">关闭</button>
 </div>
 </form></div>
 </div>
@@ -352,11 +368,11 @@
 <datalist id="nameSuggestions"></datalist>
 <datalist id="solutionSuggestions"></datalist>
 
-<div class="ticket-modal-mask" id="ticketDetailModal" onclick="onTicketDetailMaskClick(event)">
+<div class="ticket-modal-mask" id="ticketDetailModal">
 <div aria-labelledby="ticketDetailTitle" aria-modal="true" class="ticket-modal-panel ticket-detail-panel" role="dialog">
 <div class="ticket-modal-header">
 <h2 id="ticketDetailTitle">工单详情</h2>
-<button class="ticket-modal-close" onclick="closeTicketDetailModal()" type="button">×</button>
+<button class="ticket-modal-close" id="ticketDetailModalClose" type="button">×</button>
 </div>
 <div class="ticket-modal-body">
 <div id="ticketDetailBody"></div>
@@ -366,11 +382,11 @@
 </div>
 
 <!-- 写入口令设置（更正式 UI） -->
-<div class="ticket-modal-mask" id="keyModal" onclick="onKeyModalMaskClick(event)">
+<div class="ticket-modal-mask" id="keyModal">
   <div class="ticket-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle" style="width:min(640px,96vw);">
     <div class="ticket-modal-header">
       <div style="font-weight:700;font-size:18px;" id="keyModalTitle">写入口令设置</div>
-      <button type="button" class="ticket-modal-close" onclick="closeKeyModal()">×</button>
+      <button type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
     </div>
 
     <div class="key-form">
@@ -380,7 +396,7 @@
       </div>
 
       <div class="key-row">
-        <label><input id="editKeyShow" type="checkbox" onchange="toggleEditKeyVisibility()" /> 显示口令</label>
+        <label><input id="editKeyShow" type="checkbox" /> 显示口令</label>
         <span id="editKeyStatus2" class="pill off">未设置</span>
       </div>
 
@@ -392,10 +408,10 @@
       </div>
 
       <div class="key-actions">
-        <button type="button" class="btn-ghost" onclick="closeKeyModal()">关闭</button>
-        <button type="button" class="btn-danger" onclick="clearEditKeyFromUI()">清除</button>
-        <button type="button" class="btn-ghost" onclick="testEditKey()">测试</button>
-        <button type="button" class="primary" onclick="saveEditKeyFromUI()">保存</button>
+        <button type="button" class="btn-ghost" id="btnCloseKeyModal">关闭</button>
+        <button type="button" class="btn-danger" id="btnClearEditKey">清除</button>
+        <button type="button" class="btn-ghost" id="btnTestEditKeyModal">测试</button>
+        <button type="button" class="primary" id="btnSaveEditKey">保存</button>
       </div>
     </div>
   </div>

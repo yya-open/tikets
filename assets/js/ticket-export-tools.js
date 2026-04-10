@@ -13,22 +13,46 @@ function getTodayStamp() {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 }
 
+function getDateTimeStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function sanitizeFilenamePart(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '')
+    .slice(0, 40);
+}
+
+function getExportContextLabel() {
+  const runtime = window.TicketQueryRuntime;
+  const summary = runtime && typeof runtime.getCurrentQuerySummary === 'function'
+    ? runtime.getCurrentQuerySummary()
+    : (window.TicketQueryState && typeof window.TicketQueryState.getFilterSummary === 'function' ? window.TicketQueryState.getFilterSummary() : {});
+  const parts = [];
+  parts.push(window.TicketAppState.viewMode === 'trash' ? '回收站' : '工单');
+  if (summary.year) parts.push(`${summary.year}年`);
+  if (summary.month) parts.push(`${summary.month}月`);
+  if (summary.type) parts.push(`类型-${sanitizeFilenamePart(summary.type)}`);
+  if (summary.department) parts.push(`部门-${sanitizeFilenamePart(summary.department)}`);
+  if (summary.name) parts.push(`姓名-${sanitizeFilenamePart(summary.name)}`);
+  if (summary.keyword) parts.push(`关键词-${sanitizeFilenamePart(summary.keyword)}`);
+  if (summary.status) parts.push(`状态-${sanitizeFilenamePart(summary.status)}`);
+  return parts.filter(Boolean).join('_') || '工单';
+}
+
+function buildExportFilename(base, ext) {
+  return `${base}_${getExportContextLabel()}_${getDateTimeStamp()}.${ext}`;
+}
+
 async function fetchAllFilteredRecords() {
-  const stats = await loadStatsFromServer();
-  const total = Number(stats?.total_filtered ?? 0) || 0;
-  if (total <= 0) return [];
-  const pageSize = 100;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const all = [];
-  for (let page = 1; page <= pages; page++) {
-    const sp = buildFilters({ includeYearMonth: true });
-    sp.set("page", String(page));
-    sp.set("pageSize", String(pageSize));
-    const j = await window.TicketService.loadTickets(sp);
-    const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
-    all.push(...normalizeRecords(arr));
-  }
-  return all;
+  const runtime = window.TicketQueryRuntime;
+  if (!runtime) throw new Error('TicketQueryRuntime is not available');
+  const snapshot = runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode });
+  return await runtime.fetchAll(snapshot, { pageSize: 100 });
 }
 
 function buildSummaryRows(records) {
@@ -73,29 +97,22 @@ function autoFitWorksheetColumns(ws, rows) {
 }
 
 async function fetchRecordsByViewMode(targetViewMode, extraSearchParams) {
-  const statsParams = extraSearchParams instanceof URLSearchParams
-    ? new URLSearchParams(extraSearchParams)
-    : new URLSearchParams();
-  if (targetViewMode === 'trash') statsParams.set('trash', '1');
-  const stats = await window.TicketService.loadStats(statsParams);
-  const total = Number(stats?.total_filtered ?? stats?.total_all ?? 0) || 0;
-  if (total <= 0) return [];
-
-  const pageSize = 100;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const all = [];
-  for (let page = 1; page <= pages; page++) {
-    const sp = extraSearchParams instanceof URLSearchParams
-      ? new URLSearchParams(extraSearchParams)
-      : new URLSearchParams();
-    if (targetViewMode === 'trash') sp.set('trash', '1');
-    sp.set('page', String(page));
-    sp.set('pageSize', String(pageSize));
-    const j = await window.TicketService.loadTickets(sp);
-    const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
-    all.push(...normalizeRecords(arr));
+  const runtime = window.TicketQueryRuntime;
+  if (!runtime) throw new Error('TicketQueryRuntime is not available');
+  const snapshot = runtime.buildSnapshot({ includeYearMonth: true, viewMode: targetViewMode });
+  if (extraSearchParams instanceof URLSearchParams) {
+    snapshot.statsParams = new URLSearchParams(extraSearchParams);
+    snapshot.pageParams = new URLSearchParams(extraSearchParams);
+    if (targetViewMode === 'trash') {
+      snapshot.statsParams.set('trash', '1');
+      snapshot.pageParams.set('trash', '1');
+    }
+    snapshot.statsKey = snapshot.statsParams.toString();
+    snapshot.pageParams.set('page', '1');
+    snapshot.pageParams.set('pageSize', String(snapshot.pageSize || 100));
+    snapshot.pageKey = snapshot.pageParams.toString();
   }
-  return all;
+  return await runtime.fetchAll(snapshot, { pageSize: 100 });
 }
 
 async function exportExcelCurrent() {
@@ -105,11 +122,12 @@ async function exportExcelCurrent() {
 
     const rows = makeExcelRows(records);
     const { byType } = buildSummaryRows(records);
+    const totalCount = records.length || 1;
     const typeRows = Object.entries(byType)
       .sort((a, b) => b[1] - a[1])
-      .map(([类型, 数量]) => ({ 类型, 数量 }));
+      .map(([类型, 数量]) => ({ 类型, 数量, 占比: `${((数量 / totalCount) * 100).toFixed(1)}%` }));
     const totalRows = [
-      { 类型: '合计', 数量: records.length },
+      { 类型: '合计', 数量: records.length, 占比: '100.0%' },
       ...typeRows,
     ];
 
@@ -122,7 +140,7 @@ async function exportExcelCurrent() {
     autoFitWorksheetColumns(totalWs, totalRows);
     XLSX.utils.book_append_sheet(wb, totalWs, '类型汇总');
 
-    XLSX.writeFile(wb, `工单当前筛选_${getTodayStamp()}.xlsx`);
+    XLSX.writeFile(wb, buildExportFilename('当前筛选导出', 'xlsx'));
     showToast(`已导出当前筛选 Excel（${records.length} 条，含类型汇总）。`, 'success');
   } catch (e) {
     if (isNoKeyError(e)) return;
@@ -143,11 +161,12 @@ async function exportExcelByMonth() {
     });
 
     const { byType } = buildSummaryRows(records);
+    const totalCount = records.length || 1;
     const typeRows = Object.entries(byType)
       .sort((a, b) => b[1] - a[1])
-      .map(([类型, 数量]) => ({ 类型, 数量 }));
+      .map(([类型, 数量]) => ({ 类型, 数量, 占比: `${((数量 / totalCount) * 100).toFixed(1)}%` }));
     const totalRows = [
-      { 类型: '合计', 数量: records.length },
+      { 类型: '合计', 数量: records.length, 占比: '100.0%' },
       ...typeRows,
     ];
 
@@ -164,7 +183,7 @@ async function exportExcelByMonth() {
       XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
     });
 
-    XLSX.writeFile(wb, `工单按月导出_${getTodayStamp()}.xlsx`);
+    XLSX.writeFile(wb, buildExportFilename('按月分Sheet导出', 'xlsx'));
     showToast(`已按月份分 Sheet 导出 Excel（${records.length} 条，含类型汇总）。`, 'success');
   } catch (e) {
     if (isNoKeyError(e)) return;
@@ -191,7 +210,7 @@ async function backupData() {
       },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    downloadBlob(blob, `工单完整备份_${getTodayStamp()}.json`);
+    downloadBlob(blob, buildExportFilename('完整备份', 'json'));
     showToast(`已导出完整备份（工单 ${active.length} 条，回收站 ${trash.length} 条）。`, 'success');
   } catch (e) {
     if (isNoKeyError(e)) return;
@@ -204,9 +223,10 @@ function exportCurrentJson() {
   fetchAllFilteredRecords().then((records) => {
     if (!records.length) return showToast("当前视图没有可导出的记录。", "warning");
     const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
-    downloadBlob(blob, `工单当前视图_${getTodayStamp()}.json`);
+    downloadBlob(blob, buildExportFilename('当前视图导出', 'json'));
     showToast(`已导出当前视图 JSON（${records.length} 条）。`, "success");
   }).catch((e) => {
+    if (isNoKeyError(e)) return;
     console.error(e);
     showToast("导出当前视图 JSON 失败。", "error");
   });
@@ -219,17 +239,22 @@ async function exportSummaryExcel() {
 
     const wb = XLSX.utils.book_new();
     const { byType, byMonth } = buildSummaryRows(records);
-    const stats = await loadStatsFromServer();
+    const runtime = window.TicketQueryRuntime;
+    const snapshot = runtime ? runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode }) : null;
+    const stats = runtime ? await runtime.fetchStats(snapshot) : await loadStatsFromServer();
+    const filterSummary = runtime ? runtime.getCurrentQuerySummary() : (window.TicketQueryState && typeof window.TicketQueryState.getFilterSummary === 'function'
+      ? window.TicketQueryState.getFilterSummary()
+      : {});
     const summary = [
       { 项目: "导出时间", 值: new Date().toLocaleString() },
       { 项目: "当前模式", 值: window.TicketAppState.viewMode === "trash" ? "回收站" : "工单" },
       { 项目: "当前视图记录数", 值: records.length },
       { 项目: "全部记录数", 值: Number(stats?.total_all ?? records.length) || records.length },
-      { 项目: "年份筛选", 值: activeYear || "全部" },
-      { 项目: "月份筛选", 值: activeMonth || "全部" },
-      { 项目: "日期范围", 值: `${document.getElementById("filterFrom")?.value || "-"} ~ ${document.getElementById("filterTo")?.value || "-"}` },
-      { 项目: "类型筛选", 值: document.getElementById("filterType")?.value || "全部" },
-      { 项目: "关键字", 值: document.getElementById("filterKeyword")?.value || "-" }
+      { 项目: "年份筛选", 值: filterSummary.year || "全部" },
+      { 项目: "月份筛选", 值: filterSummary.month || "全部" },
+      { 项目: "日期范围", 值: `${filterSummary.from || "-"} ~ ${filterSummary.to || "-"}` },
+      { 项目: "类型筛选", 值: filterSummary.type || "全部" },
+      { 项目: "关键字", 值: filterSummary.keyword || "-" }
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "汇总");
 
@@ -238,18 +263,40 @@ async function exportSummaryExcel() {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "当前视图明细");
 
-    const typeRows = Object.entries(byType).sort((a,b) => b[1]-a[1]).map(([类型, 数量]) => ({ 类型, 数量 }));
+    const totalCount = records.length || 1;
+    const typeRows = Object.entries(byType).sort((a,b) => b[1]-a[1]).map(([类型, 数量]) => ({ 类型, 数量, 占比: `${((数量 / totalCount) * 100).toFixed(1)}%` }));
     const monthRows = Object.entries(byMonth).sort((a,b) => a[0].localeCompare(b[0])).map(([月份, 数量]) => ({ 月份, 数量 }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(typeRows), "类型统计");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthRows), "月份统计");
 
-    XLSX.writeFile(wb, `工单统计汇总_${getTodayStamp()}.xlsx`);
+    XLSX.writeFile(wb, buildExportFilename('统计汇总', 'xlsx'));
     showToast(`已导出统计汇总 Excel（${records.length} 条）。`, "success");
   } catch (e) {
     if (isNoKeyError(e)) return;
     console.error(e);
     showToast("导出统计汇总 Excel 失败。", "error");
   }
+}
+
+
+function exportSelectedJson(records) {
+  const selected = Array.isArray(records) ? records : [];
+  if (!selected.length) return showToast('请先选择要导出的工单。', 'warning');
+  const blob = new Blob([JSON.stringify(selected, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, buildExportFilename(`选中${selected.length}条`, 'json'));
+  showToast(`已导出选中 JSON（${selected.length} 条）。`, 'success');
+}
+
+function exportSelectedExcel(records) {
+  const selected = Array.isArray(records) ? records : [];
+  if (!selected.length) return showToast('请先选择要导出的工单。', 'warning');
+  const rows = makeExcelRows(selected);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  autoFitWorksheetColumns(ws, rows);
+  XLSX.utils.book_append_sheet(wb, ws, '选中工单');
+  XLSX.writeFile(wb, buildExportFilename(`选中${selected.length}条`, 'xlsx'));
+  showToast(`已导出选中 Excel（${selected.length} 条）。`, 'success');
 }
 
 function loadBackup(event) {
@@ -312,7 +359,7 @@ function loadBackup(event) {
       });
 
       if (toCloud) {
-        const previewRes = await authedFetch("/api/import/preview", {
+        const previewRes = await window.TicketApi.authedFetch("/api/import/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(normPayload || normImported)
@@ -334,7 +381,7 @@ function loadBackup(event) {
           return;
         }
 
-        const applyRes = await authedFetch("/api/import/apply", {
+        const applyRes = await window.TicketApi.authedFetch("/api/import/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(normPayload || normImported)
@@ -403,54 +450,57 @@ function loadBackup(event) {
   reader.readAsText(file);
 }
 
-function archiveByMonthJSON() {
-  const records = window.TicketAppState.records || [];
-  if (records.length === 0) return showToast("没有可归档的数据！", "warning");
-  const groups = {};
-  records.forEach(r => { const monthKey = r.date.slice(0, 7); (groups[monthKey] ||= []).push(r); });
-  Object.keys(groups).sort().forEach(monthKey => {
-    const blob = new Blob([JSON.stringify(groups[monthKey], null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `工单_${monthKey}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-  showToast("所有月份已分别导出为独立 JSON 文件！", "success");
+async function archiveByMonthJSON() {
+  try {
+    const records = await fetchAllFilteredRecords();
+    if (records.length === 0) return showToast("没有可归档的数据！", "warning");
+    const groups = {};
+    records.forEach(r => { const monthKey = String(r.date || '').slice(0, 7) || '未知月份'; (groups[monthKey] ||= []).push(r); });
+    Object.keys(groups).sort().forEach(monthKey => {
+      const blob = new Blob([JSON.stringify(groups[monthKey], null, 2)], { type: "application/json" });
+      downloadBlob(blob, buildExportFilename(`月份归档_${monthKey}`, 'json'));
+    });
+    showToast(`所有月份已分别导出为独立 JSON 文件（${records.length} 条）。`, "success");
+  } catch (e) {
+    if (isNoKeyError(e)) return;
+    console.error(e);
+    showToast("按月份导出 JSON 失败。", "error");
+  }
 }
 
-function exportYearZip() {
-  const records = window.TicketAppState.records || [];
-  if (records.length === 0) return showToast("没有可打包的数据！", "warning");
-  const zip = new JSZip();
-  const groups = {};
-  records.forEach(r => { const monthKey = r.date.slice(0, 7); (groups[monthKey] ||= []).push(r); });
-  Object.keys(groups).sort().forEach(monthKey => zip.file(`工单_${monthKey}.json`, JSON.stringify(groups[monthKey], null, 2)));
-  zip.generateAsync({ type: "blob" }).then(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "工单年度归档.zip";
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+async function exportYearZip() {
+  try {
+    const records = await fetchAllFilteredRecords();
+    if (records.length === 0) return showToast("没有可打包的数据！", "warning");
+    const zip = new JSZip();
+    const groups = {};
+    records.forEach(r => { const monthKey = String(r.date || '').slice(0, 7) || '未知月份'; (groups[monthKey] ||= []).push(r); });
+    Object.keys(groups).sort().forEach(monthKey => zip.file(`工单_${monthKey}.json`, JSON.stringify(groups[monthKey], null, 2)));
+    const blob = await zip.generateAsync({ type: "blob" });
+    downloadBlob(blob, buildExportFilename('年度归档', 'zip'));
+    showToast(`已打包年度 ZIP（${records.length} 条）。`, "success");
+  } catch (e) {
+    if (isNoKeyError(e)) return;
+    console.error(e);
+    showToast("打包年度 ZIP 失败。", "error");
+  }
 }
 
 async function manualBackup() {
-  const records = window.TicketAppState.records || [];
   if (!window.showDirectoryPicker) return showToast("当前浏览器不支持目录访问 API，建议使用最新版的 Edge/Chrome。", "warning");
-  if (records.length === 0) return showToast("当前没有可备份的数据！", "warning");
   try {
+    const records = await fetchAllFilteredRecords();
+    if (records.length === 0) return showToast("当前没有可备份的数据！", "warning");
     const dir = await window.showDirectoryPicker();
     const today = new Date().toISOString().slice(0, 10);
-    const fileHandle = await dir.getFileHandle(`工单备份_${today}.json`, { create: true });
+    const fileHandle = await dir.getFileHandle(buildExportFilename('本地目录备份', 'json'), { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(records, null, 2));
     await writable.close();
-    showToast("备份成功！", "success");
+    showToast(`备份成功（${records.length} 条）！`, "success");
   } catch (e) {
     if (e && e.name === "AbortError") return;
+    if (isNoKeyError(e)) return;
     console.error(e);
     showToast("备份失败！", "error");
   }
@@ -466,3 +516,6 @@ window.loadBackup = loadBackup;
 window.archiveByMonthJSON = archiveByMonthJSON;
 window.exportYearZip = exportYearZip;
 window.manualBackup = manualBackup;
+
+window.exportSelectedJson = exportSelectedJson;
+window.exportSelectedExcel = exportSelectedExcel;

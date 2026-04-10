@@ -4,98 +4,97 @@ function escapeDetailValue(value) {
 }
 
 function closeTicketDetailModal() {
-  const overlay = document.getElementById("modalOverlay");
-  const titleEl = document.getElementById("modalTitle");
-  const bodyEl = document.getElementById("modalBody");
-  const footerEl = document.getElementById("modalFooter");
-  if (!overlay || !titleEl || !bodyEl || !footerEl) return;
-  overlay.classList.remove("show");
-  overlay.setAttribute("aria-hidden", "true");
-  overlay.onclick = null;
-  bodyEl.innerHTML = "";
-  footerEl.innerHTML = "";
+  const overlay = document.getElementById('ticketDetailModal');
+  const bodyEl = document.getElementById('ticketDetailBody');
+  const footerEl = document.getElementById('ticketDetailActions');
+  if (!overlay || !bodyEl || !footerEl) return;
+  overlay.classList.remove('show');
+  bodyEl.innerHTML = '';
+  footerEl.innerHTML = '';
 }
 
 function onTicketDetailMaskClick(e) {
-  const overlay = document.getElementById("modalOverlay");
+  const overlay = document.getElementById('ticketDetailModal');
   if (overlay && e && e.target === overlay) closeTicketDetailModal();
 }
 
 function renderTicketDetailHtml(record) {
+  const isTrash = window.TicketAppState.viewMode === 'trash' || Number(record.is_deleted || 0) === 1;
   return `
     <div class="ticket-detail-meta">
       <span class="ticket-chip">ID：${escapeHtml(String(record.id || '-'))}</span>
+      <span class="ticket-chip ${isTrash ? 'ticket-detail-status-trash' : 'ticket-detail-status-active'}">${isTrash ? '回收站' : '正常工单'}</span>
       <span class="ticket-chip">类型：${escapeHtml(record.type || '未分类')}</span>
       <span class="ticket-chip">日期：${escapeHtml(record.date || '-')}</span>
     </div>
-    <div class="ticket-detail-grid">
-      <div class="ticket-detail-item"><div class="ticket-detail-label">问题</div><div class="ticket-detail-value">${escapeDetailValue(record.issue)}</div></div>
-      <div class="ticket-detail-item"><div class="ticket-detail-label">部门</div><div class="ticket-detail-value">${escapeDetailValue(record.department)}</div></div>
-      <div class="ticket-detail-item"><div class="ticket-detail-label">姓名</div><div class="ticket-detail-value">${escapeDetailValue(record.name)}</div></div>
-      <div class="ticket-detail-item"><div class="ticket-detail-label">最后更新时间</div><div class="ticket-detail-value">${escapeDetailValue(formatISOToLocal(record.updated_at || ''))}</div></div>
-      <div class="ticket-detail-item full"><div class="ticket-detail-label">处理方法</div><div class="ticket-detail-value">${escapeDetailValue(record.solution)}</div></div>
-      <div class="ticket-detail-item full"><div class="ticket-detail-label">备注</div><div class="ticket-detail-value">${escapeDetailValue(record.remarks)}</div></div>
+    <div class="ticket-detail-highlight">
+      <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">部门</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.department)}</div></div>
+      <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">姓名</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.name)}</div></div>
+      <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">最后更新时间</div><div class="ticket-detail-stat-value">${escapeDetailValue(formatISOToLocal(record.updated_at || ''))}</div></div>
+    </div>
+    <div class="ticket-detail-sections">
+      <section class="ticket-detail-section">
+        <div class="ticket-detail-section-header">问题描述</div>
+        <div class="ticket-detail-section-body"><div class="ticket-detail-value">${escapeDetailValue(record.issue)}</div></div>
+      </section>
+      <section class="ticket-detail-section">
+        <div class="ticket-detail-section-header">处理记录</div>
+        <div class="ticket-detail-section-body"><div class="ticket-detail-value">${escapeDetailValue(record.solution)}</div></div>
+      </section>
+      <section class="ticket-detail-section">
+        <div class="ticket-detail-section-header">补充备注</div>
+        <div class="ticket-detail-section-body"><div class="ticket-detail-value">${escapeDetailValue(record.remarks)}</div></div>
+      </section>
     </div>`;
 }
 
 function openTicketDetail(id) {
   const record = (window.TicketAppState.records || []).find(r => r.id === id);
-  if (!record) return showToast("未找到该工单详情。", "warning");
+  if (!record) return showToast('未找到该工单详情。', 'warning');
 
-  const overlay = document.getElementById("modalOverlay");
-  const titleEl = document.getElementById("modalTitle");
-  const bodyEl = document.getElementById("modalBody");
-  const footerEl = document.getElementById("modalFooter");
-
-  if (!overlay || !titleEl || !bodyEl || !footerEl) {
-    try {
-      alert(`日期：${record.date || '-'}
+  const overlay = document.getElementById('ticketDetailModal');
+  const bodyEl = document.getElementById('ticketDetailBody');
+  const footerEl = document.getElementById('ticketDetailActions');
+  if (!overlay || !bodyEl || !footerEl) {
+    try { alert(`日期：${record.date || '-'}
 类型：${record.type || '未分类'}
-问题：${record.issue || '未填写'}
-部门：${record.department || '未填写'}
-姓名：${record.name || '未填写'}
-处理方法：${record.solution || '未填写'}
-备注：${record.remarks || '未填写'}`);
-    } catch (e) {}
+问题：${record.issue || '未填写'}`); } catch (e) {}
     return;
   }
 
-  titleEl.textContent = '工单详情';
   bodyEl.innerHTML = renderTicketDetailHtml(record);
   footerEl.innerHTML = '';
 
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'm-btn secondary';
-  closeBtn.textContent = '关闭';
-  closeBtn.onclick = closeTicketDetailModal;
-
-  if (viewMode === 'trash') {
-    const restoreBtn = document.createElement('button');
-    restoreBtn.type = 'button';
-    restoreBtn.className = 'm-btn primary';
-    restoreBtn.textContent = '恢复';
-    restoreBtn.onclick = async function () {
-      closeTicketDetailModal();
-      await restoreRecord(record.id);
-    };
-    footerEl.appendChild(restoreBtn);
-  } else {
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'm-btn primary';
-    editBtn.textContent = '编辑';
-    editBtn.onclick = function () {
-      closeTicketDetailModal();
-      editRecord(record.id);
-    };
-    footerEl.appendChild(editBtn);
+  function makeFooterButton(text, className, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.textContent = text;
+    btn.addEventListener('click', onClick);
+    return btn;
   }
 
-  footerEl.appendChild(closeBtn);
-  overlay.setAttribute('aria-hidden', 'false');
+  if (window.TicketAppState.viewMode === 'trash') {
+    footerEl.appendChild(makeFooterButton('恢复', 'primary', async function () {
+      closeTicketDetailModal();
+      await restoreRecord(record.id);
+    }));
+    footerEl.appendChild(makeFooterButton('彻底删除', 'danger', async function () {
+      closeTicketDetailModal();
+      await hardDeleteRecord(record.id);
+    }));
+  } else {
+    footerEl.appendChild(makeFooterButton('编辑', 'primary', function () {
+      closeTicketDetailModal();
+      editRecord(record.id);
+    }));
+    footerEl.appendChild(makeFooterButton('删除', 'danger', async function () {
+      closeTicketDetailModal();
+      await deleteRecord(record.id);
+    }));
+  }
+  footerEl.appendChild(makeFooterButton('关闭', 'secondary', closeTicketDetailModal));
   overlay.classList.add('show');
-  overlay.onclick = function (e) { if (e.target === overlay) closeTicketDetailModal(); };
 }
 
 window.openTicketDetail = openTicketDetail;
@@ -108,6 +107,18 @@ function bindTableDetailInteractions() {
   table.dataset.detailBound = '1';
 
   table.addEventListener('click', function (e) {
+    const checkbox = e.target && e.target.closest ? e.target.closest('input.row-select[type="checkbox"]') : null;
+    if (checkbox) {
+      const id = Number(checkbox.getAttribute('data-id'));
+      if (Number.isFinite(id)) {
+        if (checkbox.checked) selectedTicketIds.add(id);
+        else selectedTicketIds.delete(id);
+        const row = checkbox.closest('tr');
+        if (row) row.classList.toggle('row-selected', checkbox.checked);
+        syncBatchToolbar();
+      }
+      return;
+    }
     const btn = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
     if (!btn) return;
     const action = btn.getAttribute('data-action');
@@ -130,6 +141,98 @@ function bindTableDetailInteractions() {
   });
 }
 
+function bindMonthViewInteractions() {
+  const container = document.getElementById('monthButtons');
+  if (!container || container.dataset.bound === '1') return;
+  container.dataset.bound = '1';
+  container.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest('button[data-month-action]') : null;
+    if (!btn || btn.disabled || btn.classList.contains('disabled')) return;
+    const action = btn.getAttribute('data-month-action');
+    if (action === 'all') {
+      activeMonth = '';
+      saveViewState();
+      renderTable({ resetPage: true });
+      return;
+    }
+    if (action === 'set') {
+      const month = btn.getAttribute('data-month');
+      if (!month) return;
+      setActiveMonth(month);
+    }
+  });
+}
+
+function bindPaginationInteractions() {
+  const root = document.getElementById('pagination');
+  if (!root || root.dataset.bound === '1') return;
+  root.dataset.bound = '1';
+
+  root.addEventListener('change', function (e) {
+    const select = e.target && e.target.closest ? e.target.closest('select.page-size') : null;
+    if (!select) return;
+    pageSize = Math.min(Number(select.value) || 100, PAGE_SIZE_MAX);
+    renderTable({ resetPage: true });
+  });
+
+  root.addEventListener('keydown', function (e) {
+    const input = e.target && e.target.closest ? e.target.closest('input.page-jump') : null;
+    if (!input || e.key !== 'Enter') return;
+    const totalItems = Number(root.getAttribute('data-total-items') || 0) || 0;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const p = clamp(Number(input.value) || 1, 1, totalPages);
+    cursorNav = null;
+    currentPage = p;
+    renderTable({ resetPage: false });
+    input.value = '';
+  });
+
+  root.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest('button[data-page-action]') : null;
+    if (!btn || btn.disabled) return;
+    const action = btn.getAttribute('data-page-action');
+    const totalItems = Number(root.getAttribute('data-total-items') || 0) || 0;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+    if (action === 'first') {
+      cursorNav = null;
+      currentPage = 1;
+      return renderTable({ resetPage: true });
+    }
+    if (action === 'prev') {
+      const c = pageCursorMap.get(currentPage);
+      cursorNav = c && c.prev_cursor ? { cursor: c.prev_cursor, direction: 'prev' } : null;
+      currentPage = Math.max(1, currentPage - 1);
+      return renderTable({ resetPage: false });
+    }
+    if (action === 'next') {
+      const c = pageCursorMap.get(currentPage);
+      cursorNav = c && c.next_cursor ? { cursor: c.next_cursor, direction: 'next' } : null;
+      currentPage = Math.min(totalPages, currentPage + 1);
+      return renderTable({ resetPage: false });
+    }
+    if (action === 'last') {
+      cursorNav = null;
+      currentPage = totalPages;
+      return renderTable({ resetPage: false });
+    }
+    if (action === 'goto') {
+      const page = clamp(Number(btn.getAttribute('data-page') || 1), 1, totalPages);
+      cursorNav = null;
+      currentPage = page;
+      return renderTable({ resetPage: false });
+    }
+    if (action === 'jump') {
+      const input = root.querySelector('input.page-jump');
+      const p = clamp(Number(input && input.value || 1), 1, totalPages);
+      cursorNav = null;
+      currentPage = p;
+      renderTable({ resetPage: false });
+      if (input) input.value = '';
+    }
+  });
+}
+
 var activeYear = ""; // 当前选择的年份（字符串，如 "2025"）
     let activeMonth = ""; // 当前选择的月份（字符串，"01" ~ "12"）
 
@@ -146,6 +249,7 @@ var currentPage = 1;
 var cursorNav = null; // { cursor: string, direction: 'next'|'prev' }
 var cursorKey = "";   // 当前筛选 + viewMode + pageSize
 var pageCursorMap = new Map(); // page -> { next_cursor, prev_cursor }
+var selectedTicketIds = new Set();
 
 // ===== 服务端分页（大数据量） =====
 var serverTotal = 0;          // 当前筛选下的总条数（用于分页 UI）
@@ -170,8 +274,8 @@ function clamp(num, min, max) {
 
     function saveViewState() {
       try {
-        localStorage.setItem("ticket_view_year", activeYear || "");
-        localStorage.setItem("ticket_view_month", activeMonth || "");
+        localStorage.setItem("ticket_view_year", window.TicketAppState.activeYear || "");
+        localStorage.setItem("ticket_view_month", window.TicketAppState.activeMonth || "");
       } catch (e) {
         // ignore
       }
@@ -179,11 +283,11 @@ function clamp(num, min, max) {
 
     function loadViewState() {
       try {
-        activeYear = localStorage.getItem("ticket_view_year") || "";
-        activeMonth = localStorage.getItem("ticket_view_month") || "";
+        window.TicketAppState.activeYear = localStorage.getItem("ticket_view_year") || "";
+        window.TicketAppState.activeMonth = localStorage.getItem("ticket_view_month") || "";
       } catch (e) {
-        activeYear = "";
-        activeMonth = "";
+        window.TicketAppState.activeYear = "";
+        window.TicketAppState.activeMonth = "";
       }
     }
 
@@ -231,47 +335,36 @@ function clamp(num, min, max) {
     }
 
     function buildFilters({ includeYearMonth = true } = {}) {
-      const sp = new URLSearchParams();
-      if (viewMode === "trash") sp.set("trash", "1");
-
-      // 年/月视图 -> 转成日期范围
-      let rangeFrom = "";
-      let rangeTo = "";
-      if (includeYearMonth && activeYear) {
-        if (activeMonth) {
-          const last = String(monthLastDay(activeYear, Number(activeMonth))).padStart(2, "0");
-          rangeFrom = `${activeYear}-${activeMonth}-01`;
-          rangeTo = `${activeYear}-${activeMonth}-${last}`;
-        } else {
-          rangeFrom = `${activeYear}-01-01`;
-          rangeTo = `${activeYear}-12-31`;
-        }
+      if (window.TicketQueryRuntime && typeof window.TicketQueryRuntime.buildSnapshot === 'function') {
+        return window.TicketQueryRuntime.buildSnapshot({
+          includeYearMonth,
+          viewMode: window.TicketAppState.viewMode,
+          page: currentPage,
+          pageSize,
+        }).statsParams;
       }
-
-      const fromInput = (document.getElementById("filterFrom")?.value || "").trim();
-      const toInput = (document.getElementById("filterTo")?.value || "").trim();
-      const type = (document.getElementById("filterType")?.value || "").trim();
-      const q = (document.getElementById("filterKeyword")?.value || "").trim();
-
-      const from = maxDate(rangeFrom, fromInput);
-      const to = minDate(rangeTo, toInput);
-
-      if (from) sp.set("from", from);
-      if (to) sp.set("to", to);
-      if (type) sp.set("type", type);
-      if (q) sp.set("q", q);
-      return sp;
+      if (window.TicketQueryState && typeof window.TicketQueryState.buildSearchParams === 'function') {
+        return window.TicketQueryState.buildSearchParams({ includeYearMonth, viewMode: window.TicketAppState.viewMode });
+      }
+      return new URLSearchParams();
     }
 
     function buildCursorKey() {
-      // 游标分页需要在“筛选条件不变”时才可复用 cursor
+      const runtime = window.TicketQueryRuntime;
+      if (runtime && typeof runtime.buildSnapshot === 'function') {
+        const snapshot = runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode, page: currentPage, pageSize });
+        return snapshot.statsKey + `&pageSize=${pageSize}`;
+      }
       const sp = buildFilters({ includeYearMonth: true });
       sp.set("pageSize", String(pageSize));
       return sp.toString();
     }
 
     function buildStatsKey() {
-      // stats 不包含分页参数
+      const runtime = window.TicketQueryRuntime;
+      if (runtime && typeof runtime.buildSnapshot === 'function') {
+        return runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode, page: currentPage, pageSize }).statsKey;
+      }
       return buildFilters({ includeYearMonth: true }).toString();
     }
 
@@ -282,24 +375,27 @@ function clamp(num, min, max) {
       const j = await window.TicketService.loadMeta(viewMode);
       metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
       metaTotalAll = Number(j?.total_all ?? 0) || 0;
+      window.TicketAppState.metaMonthCounts = metaMonthCounts;
+      window.TicketAppState.metaTotalAll = metaTotalAll;
     }
 
     async function loadPageFromServer() {
-      const sp = buildFilters({ includeYearMonth: true });
-      sp.set("page", String(currentPage));
-      sp.set("pageSize", String(pageSize));
+      const runtime = window.TicketQueryRuntime;
+      const snapshot = runtime && typeof runtime.buildSnapshot === 'function'
+        ? runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode, page: currentPage, pageSize })
+        : null;
 
-      // 游标分页：仅用于“上一页/下一页”顺序翻页。
-      if (cursorNav && cursorNav.cursor) {
-        sp.set("cursor", cursorNav.cursor);
-        sp.set("direction", cursorNav.direction || "next");
-      }
-
-      const j = await window.TicketService.loadTickets(sp);
+      const j = snapshot
+        ? await runtime.fetchPage(snapshot, cursorNav && cursorNav.cursor ? { cursor: cursorNav.cursor, direction: cursorNav.direction || 'next' } : {})
+        : await window.TicketService.loadTickets(buildFilters({ includeYearMonth: true }));
 
       const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
       records = normalizeRecords(arr);
       serverTotal = Number(j?.total ?? records.length) || 0;
+      window.TicketAppState.records = records;
+      window.TicketAppState.serverTotal = serverTotal;
+      const currentIds = new Set(records.map((r) => Number(r.id)).filter(Number.isFinite));
+      selectedTicketIds = new Set(Array.from(selectedTicketIds).filter((id) => currentIds.has(id)));
 
       // 兼容后端回传 page/pageSize
       const p = Number(j?.page);
@@ -320,10 +416,14 @@ function clamp(num, min, max) {
     }
 
     async function loadStatsFromServer() {
+      const runtime = window.TicketQueryRuntime;
+      if (runtime && typeof runtime.buildSnapshot === 'function') {
+        const snapshot = runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode, page: currentPage, pageSize });
+        return await runtime.fetchStats(snapshot);
+      }
       const key = buildStatsKey();
       if (key && key === lastStatsKey && cachedStats) return cachedStats;
       lastStatsKey = key;
-
       const sp = buildFilters({ includeYearMonth: true });
       cachedStats = await window.TicketService.loadStats(sp);
       return cachedStats;
@@ -348,6 +448,113 @@ function clamp(num, min, max) {
       }
     }
 
+function getSelectedRecords() {
+  return (window.TicketAppState.records || []).filter((r) => selectedTicketIds.has(Number(r.id)));
+}
+
+function syncBatchToolbar() {
+  const allHead = document.getElementById('selectAllRowsHead');
+  const allTop = document.getElementById('selectAllRows');
+  const currentIds = (window.TicketAppState.records || []).map((r) => Number(r.id)).filter(Number.isFinite);
+  const selectable = currentIds.length;
+  const selectedOnPage = currentIds.filter((id) => selectedTicketIds.has(id)).length;
+  const summary = document.getElementById('batchSummary');
+  if (summary) summary.textContent = selectedOnPage ? `本页已选择 ${selectedOnPage} 条记录` : '未选择记录';
+  [allHead, allTop].forEach((el) => {
+    if (!el) return;
+    el.checked = selectable > 0 && selectedOnPage === selectable;
+    el.indeterminate = selectedOnPage > 0 && selectedOnPage < selectable;
+  });
+  const mode = window.TicketAppState.viewMode || 'active';
+  const btnDelete = document.getElementById('btnBatchDelete');
+  const btnRestore = document.getElementById('btnBatchRestore');
+  const btnHardDelete = document.getElementById('btnBatchHardDelete');
+  if (btnDelete) btnDelete.style.display = mode === 'trash' ? 'none' : '';
+  if (btnRestore) btnRestore.style.display = mode === 'trash' ? '' : 'none';
+  if (btnHardDelete) btnHardDelete.style.display = mode === 'trash' ? '' : 'none';
+}
+
+function toggleSelectAllOnPage(checked) {
+  (window.TicketAppState.records || []).forEach((r) => {
+    const id = Number(r.id);
+    if (!Number.isFinite(id)) return;
+    if (checked) selectedTicketIds.add(id);
+    else selectedTicketIds.delete(id);
+  });
+  const tbody = document.querySelector('#recordTable tbody');
+  if (tbody) {
+    tbody.querySelectorAll('input.row-select[type="checkbox"]').forEach((input) => {
+      input.checked = !!checked;
+      const row = input.closest('tr');
+      if (row) row.classList.toggle('row-selected', !!checked);
+    });
+  }
+  syncBatchToolbar();
+}
+
+async function runBatchAction(action) {
+  const selected = getSelectedRecords();
+  if (!selected.length) return showToast('请先选择要批量处理的工单。', 'warning');
+  if (action === 'export-json') return window.exportSelectedJson && window.exportSelectedJson(selected);
+  if (action === 'export-excel') return window.exportSelectedExcel && window.exportSelectedExcel(selected);
+
+  const count = selected.length;
+  const configMap = {
+    delete: { title: '批量删除', message: `确认将选中的 ${count} 条工单移入回收站吗？`, ok: '批量删除', handler: (id) => window.TicketService.deleteTicket(id) },
+    restore: { title: '批量恢复', message: `确认恢复选中的 ${count} 条工单吗？`, ok: '批量恢复', handler: (id) => window.TicketService.restoreTicket(id) },
+    'hard-delete': { title: '批量彻底删除', message: `确认彻底删除选中的 ${count} 条工单吗？
+
+此操作不可恢复。`, ok: '批量彻底删除', handler: (id) => window.TicketService.hardDeleteTicket(id) },
+  };
+  const cfg = configMap[action];
+  if (!cfg) return;
+  const ok = await showConfirm({ title: cfg.title, message: cfg.message, confirmText: cfg.ok, cancelText: '取消', danger: true });
+  if (!ok) return;
+
+  let success = 0;
+  for (const item of selected) {
+    try {
+      await cfg.handler(item.id);
+      success += 1;
+      selectedTicketIds.delete(Number(item.id));
+    } catch (e) {
+      if (isNoKeyError(e)) return;
+      console.error(e);
+    }
+  }
+  window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
+  await reloadAndRender();
+  showToast(`${cfg.title}完成：成功 ${success} / ${count} 条。`, success === count ? 'success' : 'warning');
+}
+
+function bindBatchToolbarInteractions() {
+  const toolbar = document.getElementById('batchToolbar');
+  if (!toolbar || toolbar.dataset.bound === '1') {
+    syncBatchToolbar();
+    return;
+  }
+  toolbar.dataset.bound = '1';
+  toolbar.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest('button[id]') : null;
+    if (!btn) return;
+    const id = btn.id;
+    if (id === 'btnBatchExportJson') return runBatchAction('export-json');
+    if (id === 'btnBatchExportExcel') return runBatchAction('export-excel');
+    if (id === 'btnBatchDelete') return runBatchAction('delete');
+    if (id === 'btnBatchRestore') return runBatchAction('restore');
+    if (id === 'btnBatchHardDelete') return runBatchAction('hard-delete');
+  });
+  const allHead = document.getElementById('selectAllRowsHead');
+  const allTop = document.getElementById('selectAllRows');
+  [allHead, allTop].forEach((el) => {
+    if (!el) return;
+    el.addEventListener('change', function () {
+      toggleSelectAllOnPage(!!el.checked);
+    });
+  });
+  syncBatchToolbar();
+}
+
 async function deleteRecord(id) {
   const ok = await showConfirm({
     title: "确认删除",
@@ -362,6 +569,7 @@ async function deleteRecord(id) {
     await window.TicketService.deleteTicket(id);
 
     if (editingId === id) resetForm();
+    window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
     await reloadAndRender();
     showToast("已移入回收站。", "success");
   } catch (e) {
@@ -382,6 +590,7 @@ async function restoreRecord(id) {
   if (!ok) return;
   try {
     await window.TicketService.restoreTicket(id);
+    window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
     await reloadAndRender();
     showToast("已恢复该工单。", "success");
   } catch (e) {
@@ -402,6 +611,7 @@ async function hardDeleteRecord(id) {
   if (!ok) return;
   try {
     await window.TicketService.hardDeleteTicket(id);
+    window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
     await reloadAndRender();
     showToast("已彻底删除。", "success");
   } catch (e) {
@@ -412,17 +622,21 @@ async function hardDeleteRecord(id) {
 }
 
     function clearFilters() {
-      document.getElementById("filterFrom").value = "";
-      document.getElementById("filterTo").value = "";
-      document.getElementById("filterType").value = "";
-      document.getElementById("filterKeyword").value = "";
-      // 保留月份视图状态，仅清空高级筛选
+      ["filterFrom", "filterTo", "filterType", "filterDepartment", "filterName", "filterKeyword", "filterStatus"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      // 保留年份/月视图状态，仅清空高级筛选
+      window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
       renderTable({ resetPage: true });
 }
 
 async function renderTable({ resetPage = true } = {}) {
   const tbody = document.getElementById("recordTable").querySelector("tbody");
   bindTableDetailInteractions();
+  bindMonthViewInteractions();
+  bindPaginationInteractions();
+  bindBatchToolbarInteractions();
   tbody.innerHTML = "";
 
   // 若筛选条件/视图变化，则清空游标分页状态
@@ -449,7 +663,7 @@ async function renderTable({ resetPage = true } = {}) {
   if (pageRecords.length === 0) {
     const row = tbody.insertRow();
     const cell = row.insertCell(0);
-    cell.colSpan = 8;
+    cell.colSpan = 9;
     cell.style.textAlign = "center";
     cell.style.color = "#999";
     cell.style.padding = "14px 8px";
@@ -460,18 +674,23 @@ async function renderTable({ resetPage = true } = {}) {
       row.dataset.ticketId = String(r.id);
       row.title = '双击查看详情';
       row.style.cursor = 'pointer';
-      row.ondblclick = function (e) {
-        if (e && e.target && e.target.closest && e.target.closest('button')) return;
-        openTicketDetail(Number(r.id));
-      };
-      row.insertCell(0).innerText = r.date;
-      row.insertCell(1).innerText = r.issue;
-      row.insertCell(2).innerText = r.department;
-      row.insertCell(3).innerText = r.name;
-      row.insertCell(4).innerText = r.solution;
-      row.insertCell(5).innerText = r.remarks;
-      row.insertCell(6).innerText = r.type;
-      const actionCell = row.insertCell(7);
+      const selectCell = row.insertCell(0);
+      selectCell.className = 'sel-cell';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'row-select';
+      checkbox.dataset.id = String(r.id);
+      checkbox.checked = selectedTicketIds.has(Number(r.id));
+      selectCell.appendChild(checkbox);
+      row.classList.toggle('row-selected', checkbox.checked);
+      row.insertCell(1).innerText = r.date;
+      row.insertCell(2).innerText = r.issue;
+      row.insertCell(3).innerText = r.department;
+      row.insertCell(4).innerText = r.name;
+      row.insertCell(5).innerText = r.solution;
+      row.insertCell(6).innerText = r.remarks;
+      row.insertCell(7).innerText = r.type;
+      const actionCell = row.insertCell(8);
 
       if (viewMode === "trash") {
         const viewBtn = document.createElement("button");
@@ -480,7 +699,6 @@ async function renderTable({ resetPage = true } = {}) {
         viewBtn.className = "small secondary";
         viewBtn.dataset.action = 'view';
         viewBtn.dataset.id = String(r.id);
-        viewBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); openTicketDetail(Number(r.id)); return false; };
 
         const restoreBtn = document.createElement("button");
         restoreBtn.type = 'button';
@@ -488,7 +706,6 @@ async function renderTable({ resetPage = true } = {}) {
         restoreBtn.className = "small";
         restoreBtn.dataset.action = 'restore';
         restoreBtn.dataset.id = String(r.id);
-        restoreBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); restoreRecord(Number(r.id)); };
 
         const hardBtn = document.createElement("button");
         hardBtn.type = 'button';
@@ -496,7 +713,6 @@ async function renderTable({ resetPage = true } = {}) {
         hardBtn.className = "small danger";
         hardBtn.dataset.action = 'hard-delete';
         hardBtn.dataset.id = String(r.id);
-        hardBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); hardDeleteRecord(Number(r.id)); };
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(restoreBtn);
@@ -508,7 +724,6 @@ async function renderTable({ resetPage = true } = {}) {
         viewBtn.className = "small secondary";
         viewBtn.dataset.action = 'view';
         viewBtn.dataset.id = String(r.id);
-        viewBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); openTicketDetail(Number(r.id)); return false; };
 
         const editBtn = document.createElement("button");
         editBtn.type = 'button';
@@ -516,7 +731,6 @@ async function renderTable({ resetPage = true } = {}) {
         editBtn.className = "small";
         editBtn.dataset.action = 'edit';
         editBtn.dataset.id = String(r.id);
-        editBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); editRecord(Number(r.id)); };
 
         const delBtn = document.createElement("button");
         delBtn.type = 'button';
@@ -524,7 +738,6 @@ async function renderTable({ resetPage = true } = {}) {
         delBtn.className = "small danger";
         delBtn.dataset.action = 'delete';
         delBtn.dataset.id = String(r.id);
-        delBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); deleteRecord(Number(r.id)); };
 
         actionCell.appendChild(viewBtn);
         actionCell.appendChild(editBtn);
@@ -543,6 +756,7 @@ async function renderTable({ resetPage = true } = {}) {
 
   refreshMonthButtons();
   renderPagination(totalItems);
+  syncBatchToolbar();
 }
 
 function renderPagination(totalItems) {
@@ -551,6 +765,7 @@ function renderPagination(totalItems) {
 
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   currentPage = clamp(currentPage, 1, totalPages);
+  el.setAttribute('data-total-items', String(totalItems || 0));
 
   el.innerHTML = "";
 
@@ -563,7 +778,6 @@ function renderPagination(totalItems) {
   const controls = document.createElement("div");
   controls.className = "page-controls";
 
-  // 每页条数（上限 100）
   const sizeLabel = document.createElement("span");
   sizeLabel.textContent = "每页：";
   const sizeSelect = document.createElement("select");
@@ -575,115 +789,56 @@ function renderPagination(totalItems) {
     sizeSelect.appendChild(opt);
   });
   sizeSelect.value = String(pageSize);
-  sizeSelect.onchange = () => {
-    pageSize = Math.min(Number(sizeSelect.value) || 100, PAGE_SIZE_MAX);
-    renderTable({ resetPage: true });
-  };
 
-  function mkBtn(text, { disabled = false, active = false, onClick } = {}) {
+  function mkBtn(text, { disabled = false, active = false, pageAction = '', page = '' } = {}) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = text;
     if (active) b.classList.add("active");
     b.disabled = disabled;
-    if (onClick) b.onclick = onClick;
+    if (pageAction) b.setAttribute('data-page-action', pageAction);
+    if (page !== '' && page !== undefined && page !== null) b.setAttribute('data-page', String(page));
     return b;
   }
 
-  const firstBtn = mkBtn("首页", {
-    disabled: currentPage <= 1 || totalItems === 0,
-    onClick: () => { cursorNav = null; currentPage = 1; renderTable({ resetPage: true }); }
-  });
-  const prevBtn = mkBtn("上一页", {
-    disabled: currentPage <= 1 || totalItems === 0,
-    onClick: () => {
-      const c = pageCursorMap.get(currentPage);
-      if (c && c.prev_cursor) {
-        cursorNav = { cursor: c.prev_cursor, direction: "prev" };
-      } else {
-        cursorNav = null;
-      }
-      currentPage -= 1;
-      renderTable({ resetPage: false });
-    }
-  });
-  const nextBtn = mkBtn("下一页", {
-    disabled: currentPage >= totalPages || totalItems === 0,
-    onClick: () => {
-      const c = pageCursorMap.get(currentPage);
-      if (c && c.next_cursor) {
-        cursorNav = { cursor: c.next_cursor, direction: "next" };
-      } else {
-        cursorNav = null;
-      }
-      currentPage += 1;
-      renderTable({ resetPage: false });
-    }
-  });
-  const lastBtn = mkBtn("末页", {
-    disabled: currentPage >= totalPages || totalItems === 0,
-    onClick: () => { cursorNav = null; currentPage = totalPages; renderTable({ resetPage: false }); }
-  });
+  controls.appendChild(sizeLabel);
+  controls.appendChild(sizeSelect);
+  controls.appendChild(mkBtn("首页", { disabled: currentPage <= 1 || totalItems === 0, pageAction: 'first' }));
+  controls.appendChild(mkBtn("上一页", { disabled: currentPage <= 1 || totalItems === 0, pageAction: 'prev' }));
 
-  // 页码按钮（最多显示 7 个）
   const maxButtons = 7;
   let startPage = Math.max(1, currentPage - 3);
   let endPage = Math.min(totalPages, startPage + maxButtons - 1);
   startPage = Math.max(1, endPage - maxButtons + 1);
 
-  // 组合 UI
-  controls.appendChild(sizeLabel);
-  controls.appendChild(sizeSelect);
-  controls.appendChild(firstBtn);
-  controls.appendChild(prevBtn);
-
   for (let p = startPage; p <= endPage; p++) {
     controls.appendChild(mkBtn(String(p), {
       active: p === currentPage,
       disabled: totalItems === 0,
-      onClick: () => { cursorNav = null; currentPage = p; renderTable({ resetPage: false }); }
+      pageAction: 'goto',
+      page: p,
     }));
   }
 
-  controls.appendChild(nextBtn);
-  controls.appendChild(lastBtn);
+  controls.appendChild(mkBtn("下一页", { disabled: currentPage >= totalPages || totalItems === 0, pageAction: 'next' }));
+  controls.appendChild(mkBtn("末页", { disabled: currentPage >= totalPages || totalItems === 0, pageAction: 'last' }));
 
-  // 跳转
   const jump = document.createElement("input");
   jump.type = "number";
   jump.min = "1";
   jump.max = String(totalPages);
   jump.placeholder = "页码";
   jump.value = "";
-  jump.onkeydown = (e) => {
-    if (e.key === "Enter") {
-      const p = clamp(Number(jump.value) || 1, 1, totalPages);
-      cursorNav = null;
-      currentPage = p;
-      renderTable({ resetPage: false });
-      jump.value = "";
-    }
-  };
-
-  const jumpBtn = mkBtn("跳转", {
-    disabled: totalItems === 0,
-    onClick: () => {
-      const p = clamp(Number(jump.value) || 1, 1, totalPages);
-      cursorNav = null;
-      currentPage = p;
-      renderTable({ resetPage: false });
-      jump.value = "";
-    }
-  });
+  jump.className = 'page-jump';
 
   controls.appendChild(jump);
-  controls.appendChild(jumpBtn);
+  controls.appendChild(mkBtn("跳转", { disabled: totalItems === 0, pageAction: 'jump' }));
 
   el.appendChild(info);
   el.appendChild(controls);
 }
 
-    function refreshYearOptions() {
+function refreshYearOptions() {
       const yearSelect = document.getElementById("yearSelect");
       const oldValue = activeYear;
       const years = Array.from(
@@ -713,6 +868,7 @@ function renderPagination(totalItems) {
 
     function refreshMonthButtons() {
       const container = document.getElementById("monthButtons");
+      if (!container) return;
       container.innerHTML = "";
 
       const year = activeYear;
@@ -724,7 +880,6 @@ function renderPagination(totalItems) {
         if (!year || y === year) monthsHasData[m] = true;
       });
 
-      // 若当前月份在该年份下无数据，则自动回到“全部月份”
       if (activeMonth && !monthsHasData[activeMonth]) {
         activeMonth = "";
         saveViewState();
@@ -736,13 +891,13 @@ function renderPagination(totalItems) {
         btn.type = "button";
         btn.className = "month-btn";
         btn.textContent = i + "月";
+        btn.setAttribute('data-month-action', 'set');
+        btn.setAttribute('data-month', m);
 
         const hasData = monthsHasData[m];
         if (!hasData) {
           btn.classList.add("disabled");
-          btn.onclick = null;
-        } else {
-          btn.onclick = () => setActiveMonth(m);
+          btn.disabled = true;
         }
         if (activeMonth === m) {
           btn.classList.add("active");
@@ -750,19 +905,14 @@ function renderPagination(totalItems) {
         container.appendChild(btn);
       }
 
-      // 增加一个“全部月份”按钮
       const allBtn = document.createElement("button");
       allBtn.type = "button";
       allBtn.className = "month-btn";
       allBtn.textContent = "全部月份";
+      allBtn.setAttribute('data-month-action', 'all');
       if (!activeMonth) {
         allBtn.classList.add("active");
       }
-      allBtn.onclick = () => {
-        activeMonth = "";
-        saveViewState();
-        renderTable();
-      };
       container.appendChild(allBtn);
     }
 
@@ -784,3 +934,5 @@ function renderPagination(totalItems) {
       renderTable();
     }
 
+
+window.runBatchAction = runBatchAction;
