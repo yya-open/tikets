@@ -50,7 +50,8 @@
   }
 
   async function updateTicket(id, payload) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}`, {
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/tickets/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload || {})
@@ -59,19 +60,22 @@
   }
 
   async function deleteTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}`, { method: 'DELETE' });
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/tickets/${id}`, { method: 'DELETE' });
     await ensureOk(res, 'delete ticket');
     return await res.json().catch(() => ({}));
   }
 
   async function restoreTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}/restore`, { method: 'PUT' });
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/tickets/${id}/restore`, { method: 'PUT' });
     await ensureOk(res, 'restore ticket');
     return await res.json().catch(() => ({}));
   }
 
   async function hardDeleteTicket(id) {
-    const res = await window.TicketApi.authedFetch(`/api/tickets/${id}/hard`, { method: 'DELETE' });
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/tickets/${id}/hard`, { method: 'DELETE' });
     await ensureOk(res, 'hard delete ticket');
     return await res.json().catch(() => ({}));
   }
