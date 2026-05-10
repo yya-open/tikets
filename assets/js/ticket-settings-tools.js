@@ -350,7 +350,11 @@ function showOneClickDetails() {
     }
     const pend = (mig.pending || mig.pending_before || mig.todo || null);
     if (Array.isArray(pend) && pend.length) {
-      items.push({ label: "待迁移", value: `${pend.length} 项`, tone: "warn" });
+      items.push({ label: "运行前待迁移", value: `${pend.length} 项`, tone: "warn" });
+    }
+    const applied = mig.applied || mig.applies || null;
+    if (Array.isArray(applied) && applied.length) {
+      items.push({ label: "本次已应用", value: `${applied.length} 项`, tone: "good" });
     }
   }
 

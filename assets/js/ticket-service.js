@@ -75,6 +75,12 @@
     return await res.json().catch(() => ({}));
   }
 
+  async function runAdminMigrate() {
+    const res = await window.TicketApi.authedFetch('/api/admin/migrate', { method: 'POST' });
+    await ensureOk(res, 'admin migrate');
+    return await res.json().catch(() => ({}));
+  }
+
   async function createTicket(payload) {
     const res = await window.TicketApi.authedFetch('/api/tickets', {
       method: 'POST',
@@ -124,6 +130,7 @@
     createTicketType,
     updateTicketType,
     disableTicketType,
+    runAdminMigrate,
     createTicket,
     updateTicket,
     deleteTicket,

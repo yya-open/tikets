@@ -188,12 +188,66 @@
     };
   }
 
+  function isSchemaNotReady(err) {
+    const code = String(err?.code || err?.data?.code || err?.data?.error || "");
+    return Number(err?.status) === 409 && (code === "schema_not_ready" || code === "schema_missing");
+  }
+
+  async function refreshHealthQuietly() {
+    try {
+      if (!window.TicketHealth) return;
+      const health = await window.TicketHealth.load();
+      window.TicketHealth.render(health);
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  async function ensureDictionaryReady() {
+    if (!state.schemaMissing) return true;
+    const ok = await showConfirm({
+      title: "初始化故障类型字典",
+      message: "故障类型字典表尚未初始化。是否现在执行数据库迁移并写入默认故障类型？",
+      confirmText: "立即初始化",
+      cancelText: "取消",
+      danger: false,
+    });
+    if (!ok) return false;
+
+    try {
+      await window.TicketService.runAdminMigrate();
+      await load();
+      await refreshHealthQuietly();
+      if (!state.schemaMissing) {
+        if (typeof showToast === "function") showToast("故障类型字典已初始化。", "success");
+        return true;
+      }
+      if (typeof showToast === "function") showToast("迁移已执行，但字典表仍不可用，请查看一键初始化详情。", "error");
+      return false;
+    } catch (e) {
+      if (window.isNoKeyError && window.isNoKeyError(e)) {
+        window.openKeyModal && window.openKeyModal();
+        if (typeof showToast === "function") showToast("请先设置有效写入口令。", "error");
+        return false;
+      }
+      console.error(e);
+      if (typeof showToast === "function") showToast("初始化故障类型字典失败。", "error");
+      return false;
+    }
+  }
+
   async function saveFromForm() {
     const payload = readForm();
     if (!payload.name) {
       if (typeof showToast === "function") showToast("类型名称不能为空。", "warning");
       return;
     }
+
+    if (state.schemaMissing) {
+      const ready = await ensureDictionaryReady();
+      if (!ready) return;
+    }
+
     try {
       if (state.editingId === null) {
         await window.TicketService.createTicketType(payload);
@@ -209,6 +263,12 @@
         return;
       }
       console.error(e);
+      if (isSchemaNotReady(e)) {
+        state.schemaMissing = true;
+        const ready = await ensureDictionaryReady();
+        if (ready) return saveFromForm();
+        return;
+      }
       if (typeof showToast === "function") showToast(e?.status === 409 ? "保存失败：名称已存在或字典尚未初始化。" : "保存故障类型失败。", "error");
     }
   }
