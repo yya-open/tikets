@@ -14,75 +14,11 @@ function getDefaultTicketType() {
   return (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.ticketType) || "日常故障";
 }
 
-function getQuickFillStore() {
-  const key = window.TicketConfig?.storageKeys?.quickFill || "ticket_quick_fill_v1";
-  try {
-    const raw = localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function saveQuickFillStore(store) {
-  const key = window.TicketConfig?.storageKeys?.quickFill || "ticket_quick_fill_v1";
-  try { localStorage.setItem(key, JSON.stringify(store || {})); } catch (_) {}
-}
-
-function mergeUniqueStrings(list, extra, limit) {
-  const seen = new Set();
-  const out = [];
-  (list || []).concat(extra || []).forEach((item) => {
-    const val = String(item || "").trim();
-    if (!val || seen.has(val)) return;
-    seen.add(val);
-    out.push(val);
-  });
-  return out.slice(0, limit);
-}
-
-function setDatalistOptions(id, values) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = (values || []).map(v => `<option value="${escapeHtml(v)}"></option>`).join("");
-}
-
-
-function refreshQuickFillOptions() {
-  const store = getQuickFillStore();
-  const cfg = window.TicketConfig?.quickFill || {};
-  const limit = Number(cfg.recentLimit || 8) || 8;
-  const recs = Array.isArray(window.TicketAppState?.records) ? window.TicketAppState.records : [];
-
-  const issueRecent = mergeUniqueStrings(store.issueRecent, recs.map(r => r.issue), limit);
-  const deptRecent = mergeUniqueStrings(store.departmentRecent, recs.map(r => r.department), limit);
-  const nameRecent = mergeUniqueStrings(store.nameRecent, recs.map(r => r.name), limit);
-  const solutionRecent = mergeUniqueStrings(store.solutionRecent, recs.map(r => r.solution), limit);
-
-  setDatalistOptions("issueSuggestions", issueRecent);
-  setDatalistOptions("departmentSuggestions", deptRecent);
-  setDatalistOptions("nameSuggestions", nameRecent);
-  setDatalistOptions("solutionSuggestions", solutionRecent);
-
-}
-
-
-function rememberQuickFillValues(payload) {
-  const cfg = window.TicketConfig?.quickFill || {};
-  const limit = Number(cfg.recentLimit || 8) || 8;
-  const store = getQuickFillStore();
-  store.issueRecent = mergeUniqueStrings([payload.issue], store.issueRecent, limit);
-  store.departmentRecent = mergeUniqueStrings([payload.department], store.departmentRecent, limit);
-  store.nameRecent = mergeUniqueStrings([payload.name], store.nameRecent, limit);
-  store.solutionRecent = mergeUniqueStrings([payload.solution], store.solutionRecent, limit);
-  saveQuickFillStore(store);
-}
+try { localStorage.removeItem("ticket_quick_fill_v1"); } catch (_) {}
 
 function openTicketModal(reset = true) {
   const mask = document.getElementById("ticketModal");
   if (!mask) return;
-  refreshQuickFillOptions();
   if (reset && window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
     window.TicketDictionary.refreshSelects();
   }
@@ -122,7 +58,6 @@ function resetForm(resetEditing = true) {
 
 function fillFormFromRecord(record) {
   if (!record) return;
-  refreshQuickFillOptions();
   if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
     window.TicketDictionary.refreshSelects({ currentType: record.type || "" });
   }
@@ -209,7 +144,6 @@ async function addOrUpdateRecord() {
       document.getElementById("submitBtn").innerText = "确定";
     }
 
-    rememberQuickFillValues(payload);
     resetForm(false);
     await reloadAndRender();
     showToast("已保存到云端。", "success");

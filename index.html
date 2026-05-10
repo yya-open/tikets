@@ -42,6 +42,7 @@
 <h2 style="margin:0;">工单操作</h2>
 <div style="display:flex;gap:10px;flex-wrap:wrap;">
 <button class="primary" id="btnOpenTicketModal" type="button">新增工单</button>
+<a class="button-link secondary" href="/admin.html">管理员页面</a>
 </div>
 </div>
 <div class="muted" style="margin-top:8px;">点击“新增工单”在弹窗中录入/编辑</div>
@@ -49,144 +50,6 @@
 
 
 
-
-<details class="card fold-card" id="settingsCard" data-fold-key="settings-main">
-  <summary>
-    <div class="fold-title-wrap">
-      <h2 class="fold-title">系统设置</h2>
-      <div class="fold-subtitle">只影响“写入/管理”能力；普通浏览仅需查询与导出。</div>
-    </div>
-    <span class="fold-arrow" aria-hidden="true"></span>
-  </summary>
-
-  <div class="fold-body">
-  <div class="settings-group compact">
-    <details class="settings-item" id="settingsEditKey" data-fold-key="settings-edit-key">
-      <summary class="settings-summary">
-        <div class="settings-left">
-          <div class="settings-title-row">
-            <div class="settings-title">写入权限</div>
-            <span id="editKeyStatus" class="pill off">未设置</span>
-          </div>
-          <div class="settings-meta">上次设置：<span id="editKeySetAt">-</span></div>
-        </div>
-
-        <div class="settings-actions">
-          <button type="button" class="secondary" id="btnOpenKeyModal">管理口令</button>
-          <button type="button" class="btn-ghost" id="btnTestEditKey">测试</button>
-        </div>
-        <span class="settings-fold-arrow" aria-hidden="true"></span>
-      </summary>
-
-      <div class="settings-desc">
-        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令会保存在当前浏览器 7 天，过期后需要重新输入。
-      </div>
-    </details>
-
-    <details class="settings-item" id="settingsOneClick" data-fold-key="settings-one-click">
-      <summary class="settings-summary">
-        <div class="settings-left">
-          <div class="settings-title-row">
-            <div class="settings-title">一键初始化 / 自检</div>
-            <span id="oneClickStatus" class="pill off">未运行</span>
-          </div>
-          <div class="settings-meta">上次运行：<span id="oneClickAt">-</span></div>
-        </div>
-
-        <div class="settings-actions">
-          <button id="btnOneClick" type="button" class="secondary" disabled>一键执行</button>
-          <button type="button" class="btn-ghost" id="btnOneClickDetails">详情</button>
-        </div>
-        <span class="settings-fold-arrow" aria-hidden="true"></span>
-      </summary>
-
-      <div class="settings-desc">
-        管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。仅对写入口令有效。
-      </div>
-    </details>
-  </div>
-  </div>
-</details>
-
-<details class="card fold-card compact-body" data-fold-key="health-main" id="systemCard">
-<summary>
-<div class="fold-title-wrap">
-<h2 class="fold-title">系统管理</h2>
-<div class="fold-subtitle">健康检查、数据库状态与故障类型字典管理。</div>
-</div>
-<span class="fold-arrow" aria-hidden="true"></span>
-</summary>
-<div class="fold-body">
-<details class="settings-item" id="systemHealthPanel" open data-fold-key="system-health-panel">
-<summary class="settings-summary">
-<div class="settings-left">
-<div class="settings-title-row">
-<div class="settings-title">系统健康检查</div>
-<span id="healthStatusPill" class="pill off">未知</span>
-</div>
-<div class="settings-meta">数据库、schema、FTS、字典与工单总量。</div>
-</div>
-<div class="settings-actions">
-<button type="button" class="secondary" id="btnRefreshHealth">刷新检查</button>
-</div>
-<span class="settings-fold-arrow" aria-hidden="true"></span>
-</summary>
-<div class="settings-desc">
-<div id="healthSummary" style="font-size:14px;">加载中...</div>
-</div>
-</details>
-
-<details class="settings-item" style="margin-top:12px;" id="systemTypeDictPanel" open data-fold-key="system-type-dict">
-<summary class="settings-summary">
-<div class="settings-left">
-<div class="settings-title-row">
-<div class="settings-title">故障类型字典</div>
-<span id="typeDictStatusPill" class="pill off">未加载</span>
-</div>
-<div class="settings-meta">统一管理工单类型，下拉与筛选会自动使用这里的数据。</div>
-</div>
-<div class="settings-actions">
-<button type="button" class="secondary" id="btnReloadTypeDict">刷新字典</button>
-</div>
-<span class="settings-fold-arrow" aria-hidden="true"></span>
-</summary>
-<div class="settings-desc">
-<div class="dict-editor">
-<div>
-<label for="typeDictName">类型名称</label>
-<input id="typeDictName" type="text" maxlength="80" placeholder="例如：VPN/网络问题"/>
-</div>
-<div>
-<label for="typeDictSort">排序</label>
-<input id="typeDictSort" type="number" min="0" step="10" value="0"/>
-</div>
-<div class="dict-switch">
-<label><input id="typeDictEnabled" type="checkbox" checked/> 启用</label>
-</div>
-<div class="dict-actions">
-<button type="button" class="primary" id="btnSaveTypeDict">保存</button>
-<button type="button" id="btnClearTypeDict">清空</button>
-</div>
-</div>
-<div id="typeDictHint" class="muted" style="margin-top:8px;">-</div>
-<div class="table-wrap" style="margin-top:12px; max-height: 360px;">
-<table id="typeDictTable">
-<thead>
-<tr>
-<th style="width:90px;">排序</th>
-<th>类型名称</th>
-<th style="width:110px;">工单数</th>
-<th style="width:110px;">状态</th>
-<th style="width:180px;">操作</th>
-</tr>
-</thead>
-<tbody id="typeDictBody"></tbody>
-</table>
-</div>
-</div>
-</details>
-</div>
-</details>
 
 <!-- 筛选 & 月份视图 & 导出 / 备份操作 -->
 <details class="card fold-card" data-fold-key="query-export-main">
@@ -384,17 +247,17 @@
 </div>
 <div>
 <label>问题：</label>
-<input id="issue" required="" type="text" list="issueSuggestions"/>
+<input id="issue" required="" type="text"/>
 <div class="field-error" id="issueError"></div>
 </div>
 <div>
 <label>部门：</label>
-<input id="department" type="text" list="departmentSuggestions"/>
+<input id="department" type="text"/>
 <div class="field-error" id="departmentError"></div>
 </div>
 <div>
 <label>姓名：</label>
-<input id="name" type="text" list="nameSuggestions"/>
+<input id="name" type="text"/>
 <div class="field-error" id="nameError"></div>
 </div>
 <div>
@@ -433,11 +296,6 @@
 </form></div>
 </div>
 </div>
-<datalist id="issueSuggestions"></datalist>
-<datalist id="departmentSuggestions"></datalist>
-<datalist id="nameSuggestions"></datalist>
-<datalist id="solutionSuggestions"></datalist>
-
 <div class="ticket-modal-mask" id="ticketDetailModal">
 <div aria-labelledby="ticketDetailTitle" aria-modal="true" class="ticket-modal-panel ticket-detail-panel" role="dialog">
 <div class="ticket-modal-header">

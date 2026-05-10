@@ -8,6 +8,7 @@
     textarea { min-height: 60px; resize: vertical; }
     .buttons { margin-top: 12px; }
     button { padding: 6px 12px; margin: 2px 4px 2px 0; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff; font-size: 13px; }
+    .button-link { display: inline-flex; align-items: center; justify-content: center; padding: 6px 12px; margin: 2px 4px 2px 0; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: inherit; font-size: 13px; line-height: 1.2; text-decoration: none; box-sizing: border-box; }
     button.primary { background: #1677ff; color: #fff; border-color: #1677ff; }
     button.danger { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
     button.small { padding: 4px 8px; font-size: 12px; }

@@ -2,8 +2,7 @@
   const config = {
     storageKeys: {
       viewMode: "ticket_view_mode",
-      foldState: "ticket_fold_state_v1",
-      quickFill: "ticket_quick_fill_v1"
+      foldState: "ticket_fold_state_v1"
     },
     defaults: {
       pageSize: 100,
@@ -21,9 +20,6 @@
         "用户咨询"
       ],
       modalDate: "today"
-    },
-    quickFill: {
-      recentLimit: 8
     },
     validation: {
       maxLengths: {
