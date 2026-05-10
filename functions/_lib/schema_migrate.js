@@ -6,7 +6,9 @@
  * Usage: see /api/admin/migrate
  */
 
-function splitSqlStatements(sql) {
+import { DEFAULT_TICKET_TYPES } from "./ticket_types.js";
+
+export function splitSqlStatements(sql) {
   // Safe SQL splitter that keeps CREATE TRIGGER ... BEGIN ... END; blocks intact.
   // It splits on semicolons that are NOT inside quotes/comments and NOT inside a BEGIN...END block.
   const s = String(sql || "");
@@ -167,6 +169,27 @@ CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
     version: 3,
     name: "fts5 tickets index + triggers",
     sql: "-- Tickets Full-Text Search (FTS5) migration for Cloudflare D1 (SQLite)\n-- Creates tickets_fts virtual table + triggers to keep it in sync.\n-- Option 1 (recommended if it works in your D1): trigram tokenizer for substring-like search.\n--   If Option 1 fails (error about tokenizer/module), use Option 2 (unicode61).\n\n-- ============\n-- Option 1: trigram (best LIKE-like experience for Chinese/English substring search)\n-- ============\n-- CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(\n--   issue, department, name, solution, remarks, type,\n--   content='tickets', content_rowid='id',\n--   tokenize='trigram'\n-- );\n\n-- ============\n-- Option 2: unicode61 (safer compatibility; token-based, not substring)\n-- ============\nCREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(\n  issue, department, name, solution, remarks, type,\n  content='tickets', content_rowid='id',\n  tokenize='unicode61 remove_diacritics 2'\n);\n\n-- Keep FTS in sync with the base table.\nDROP TRIGGER IF EXISTS trg_tickets_fts_ai;\nDROP TRIGGER IF EXISTS trg_tickets_fts_ad;\nDROP TRIGGER IF EXISTS trg_tickets_fts_au;\n\nCREATE TRIGGER trg_tickets_fts_ai AFTER INSERT ON tickets BEGIN\n  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\n  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);\nEND;\n\nCREATE TRIGGER trg_tickets_fts_ad AFTER DELETE ON tickets BEGIN\n  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)\n  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);\nEND;\n\nCREATE TRIGGER trg_tickets_fts_au AFTER UPDATE OF issue, department, name, solution, remarks, type ON tickets BEGIN\n  INSERT INTO tickets_fts(tickets_fts, rowid, issue, department, name, solution, remarks, type)\n  VALUES('delete', old.id, old.issue, old.department, old.name, old.solution, old.remarks, old.type);\n\n  INSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\n  VALUES (new.id, new.issue, new.department, new.name, new.solution, new.remarks, new.type);\nEND;\n\n-- Backfill existing rows (safe to run multiple times after wiping the FTS index)\nINSERT INTO tickets_fts(rowid, issue, department, name, solution, remarks, type)\nSELECT id, issue, department, name, solution, remarks, type\nFROM tickets\nWHERE id NOT IN (SELECT rowid FROM tickets_fts);\n",
+  },
+  {
+    version: 4,
+    name: "ticket type dictionary",
+    sql: `
+      CREATE TABLE IF NOT EXISTS ticket_type_dict (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        sort_order INTEGER DEFAULT 0,
+        is_enabled INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ticket_type_dict_enabled_sort
+      ON ticket_type_dict(is_enabled, sort_order, name);
+
+      ${DEFAULT_TICKET_TYPES.map((name, index) => (
+        `INSERT OR IGNORE INTO ticket_type_dict(name, sort_order, is_enabled) VALUES('${name.replace(/'/g, "''")}', ${(index + 1) * 10}, 1);`
+      )).join("\n")}
+    `,
   },
 ];
 

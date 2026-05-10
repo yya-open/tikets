@@ -39,6 +39,42 @@
     return await res.json();
   }
 
+  async function loadTicketTypes({ includeDisabled = false } = {}) {
+    const sp = new URLSearchParams();
+    if (includeDisabled) sp.set('includeDisabled', '1');
+    const res = await fetch(`/api/dictionaries/types?${sp.toString()}`, { cache: 'no-store' });
+    await ensureOk(res, 'load ticket types');
+    return await res.json();
+  }
+
+  async function createTicketType(payload) {
+    const res = await window.TicketApi.authedFetch('/api/dictionaries/types', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+    await ensureOk(res, 'create ticket type');
+    return await res.json().catch(() => ({}));
+  }
+
+  async function updateTicketType(id, payload) {
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/dictionaries/types/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+    await ensureOk(res, 'update ticket type');
+    return await res.json().catch(() => ({}));
+  }
+
+  async function disableTicketType(id) {
+    const apiFetch = (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') ? window.TicketApi.authedFetch.bind(window.TicketApi) : (typeof window.authedFetch === 'function' ? window.authedFetch : fetch);
+    const res = await apiFetch(`/api/dictionaries/types/${id}`, { method: 'DELETE' });
+    await ensureOk(res, 'disable ticket type');
+    return await res.json().catch(() => ({}));
+  }
+
   async function createTicket(payload) {
     const res = await window.TicketApi.authedFetch('/api/tickets', {
       method: 'POST',
@@ -84,6 +120,10 @@
     loadMeta,
     loadTickets,
     loadStats,
+    loadTicketTypes,
+    createTicketType,
+    updateTicketType,
+    disableTicketType,
     createTicket,
     updateTicket,
     deleteTicket,

@@ -5,6 +5,7 @@
   try { if (window.TicketFoldState) window.TicketFoldState.init(); } catch (e) {}
   try { updateEditKeyStatus(); } catch (e) {}
   try { if (window.TicketHealth) { const health = await window.TicketHealth.load(); window.TicketHealth.render(health); } } catch (e) { console.warn(e); if (window.TicketHealth) window.TicketHealth.render({ ok:false }); }
+  try { if (window.TicketDictionary) await window.TicketDictionary.init(); } catch (e) { console.warn(e); }
 
   // 先恢复月份视图（只影响筛选/显示，不影响数据源）
   loadViewState();

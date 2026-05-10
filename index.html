@@ -22,6 +22,7 @@
 <script src="/assets/js/ticket-api.js"></script>
 <script src="/assets/js/ticket-session.js"></script>
 <script src="/assets/js/ticket-service.js"></script>
+<script src="/assets/js/ticket-dictionary.js"></script>
 <script src="/assets/js/ticket-query-runtime.js"></script>
 <script src="/assets/js/ticket-form-modal.js"></script>
 <script src="/assets/js/ticket-export-tools.js"></script>
@@ -107,16 +108,83 @@
   </div>
 </details>
 
-<details class="card fold-card compact-body" data-fold-key="health-main">
+<details class="card fold-card compact-body" data-fold-key="health-main" id="systemCard">
 <summary>
 <div class="fold-title-wrap">
-<h2 class="fold-title">系统健康检查</h2>
-<div class="fold-subtitle">只读检查：数据库连通性、schema 版本、FTS 与工单数量。</div>
+<h2 class="fold-title">系统管理</h2>
+<div class="fold-subtitle">健康检查、数据库状态与故障类型字典管理。</div>
 </div>
 <span class="fold-arrow" aria-hidden="true"></span>
 </summary>
 <div class="fold-body">
+<details class="settings-item" id="systemHealthPanel" open data-fold-key="system-health-panel">
+<summary class="settings-summary">
+<div class="settings-left">
+<div class="settings-title-row">
+<div class="settings-title">系统健康检查</div>
+<span id="healthStatusPill" class="pill off">未知</span>
+</div>
+<div class="settings-meta">数据库、schema、FTS、字典与工单总量。</div>
+</div>
+<div class="settings-actions">
+<button type="button" class="secondary" id="btnRefreshHealth">刷新检查</button>
+</div>
+<span class="settings-fold-arrow" aria-hidden="true"></span>
+</summary>
+<div class="settings-desc">
 <div id="healthSummary" style="font-size:14px;">加载中...</div>
+</div>
+</details>
+
+<details class="settings-item" style="margin-top:12px;" id="systemTypeDictPanel" open data-fold-key="system-type-dict">
+<summary class="settings-summary">
+<div class="settings-left">
+<div class="settings-title-row">
+<div class="settings-title">故障类型字典</div>
+<span id="typeDictStatusPill" class="pill off">未加载</span>
+</div>
+<div class="settings-meta">统一管理工单类型，下拉与筛选会自动使用这里的数据。</div>
+</div>
+<div class="settings-actions">
+<button type="button" class="secondary" id="btnReloadTypeDict">刷新字典</button>
+</div>
+<span class="settings-fold-arrow" aria-hidden="true"></span>
+</summary>
+<div class="settings-desc">
+<div class="dict-editor">
+<div>
+<label for="typeDictName">类型名称</label>
+<input id="typeDictName" type="text" maxlength="80" placeholder="例如：VPN/网络问题"/>
+</div>
+<div>
+<label for="typeDictSort">排序</label>
+<input id="typeDictSort" type="number" min="0" step="10" value="0"/>
+</div>
+<div class="dict-switch">
+<label><input id="typeDictEnabled" type="checkbox" checked/> 启用</label>
+</div>
+<div class="dict-actions">
+<button type="button" class="primary" id="btnSaveTypeDict">保存</button>
+<button type="button" id="btnClearTypeDict">清空</button>
+</div>
+</div>
+<div id="typeDictHint" class="muted" style="margin-top:8px;">-</div>
+<div class="table-wrap" style="margin-top:12px; max-height: 360px;">
+<table id="typeDictTable">
+<thead>
+<tr>
+<th style="width:90px;">排序</th>
+<th>类型名称</th>
+<th style="width:110px;">工单数</th>
+<th style="width:110px;">状态</th>
+<th style="width:180px;">操作</th>
+</tr>
+</thead>
+<tbody id="typeDictBody"></tbody>
+</table>
+</div>
+</div>
+</details>
 </div>
 </details>
 

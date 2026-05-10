@@ -71,7 +71,7 @@ ALTER TABLE tickets ADD COLUMN deleted_at TEXT;
 为了避免链接外泄被人乱写，本版本对写接口加了共享口令校验：
 
 - GET `/api/tickets`：公开
-- POST/PUT/DELETE `/api/*`：必须携带 `X-EDIT-KEY`（或 `?key=`）
+- POST/PUT/DELETE `/api/*`：必须携带 `X-EDIT-KEY` 请求头
 
 ### 0.1 在 Cloudflare Pages 配置 EDIT_KEY（必须）
 
@@ -87,8 +87,24 @@ EDIT_KEY = "你自己的口令"
 
 ### 0.2 前端如何提供口令
 
-页面右上角有「设置写入口令」按钮，会把口令保存到浏览器 localStorage；
+页面右上角有「设置写入口令」按钮，会把口令保存到浏览器 sessionStorage（仅当前浏览器会话有效）；
 之后新增/编辑/删除/导入都会自动带上 `X-EDIT-KEY`。
+
+## 系统管理
+
+页面中的「系统管理」包含：
+- 系统健康检查：查看数据库、schema、FTS、字典表和工单数量。
+- 故障类型字典：管理工单类型。新增/编辑/启停需要 `X-EDIT-KEY`；改名会同步更新已有工单的类型字段。
+
+首次部署或升级后建议执行一次「一键初始化 / 自检」，确保字典表和默认故障类型已写入 D1。
+
+## 本地测试
+
+```bash
+npm test
+```
+
+测试覆盖查询筛选/FTS 构造、工单校验、导入合并 diff 和 schema SQL 拆分器。
 
 
 

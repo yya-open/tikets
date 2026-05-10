@@ -1,6 +1,16 @@
 import { requireEditKey } from "../_lib/auth.js";
 import { jsonResponse, respondCachedJson } from "../_lib/http.js";
 import { validateTicketPayload } from "../_lib/validation.js";
+import {
+  buildDeletedFilter,
+  buildFtsQuery,
+  normalizeDateParam,
+  normalizeFilterTextParam,
+  normalizeStatusDeletedParam,
+  normalizeTextParam,
+  pushKeywordLikeFilter,
+  pushTicketFilters,
+} from "../_lib/ticket_query.js";
 
 /**
  * GET  /api/tickets
@@ -66,50 +76,6 @@ function encodeCursor({ v, id }) {
   return b64urlEncodeFromString(JSON.stringify({ v: String(v), id: Number(id) }));
 }
 
-function normalizeDateParam(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  // strict YYYY-MM-DD to keep lexicographic comparisons correct
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-  return s;
-}
-
-function normalizeTextParam(raw) {
-  return String(raw ?? "").trim();
-}
-
-
-const FTS_FIELDS = ["issue", "department", "name", "solution", "remarks", "type"];
-
-function escapeFtsPhrase(s) {
-  // Wrap as a phrase and escape quotes for FTS5.
-  return `"${String(s ?? "").replace(/"/g, '""')}"`;
-}
-
-function buildFtsQuery(q) {
-  // Conservative multi-field FTS query:
-  // - Split by whitespace into terms
-  // - For each term: (issue:"term" OR department:"term" OR ...)
-  // - AND terms together
-  const tokens = String(q || "")
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-  if (!tokens.length) return "";
-
-  const perToken = tokens.map((tok) => {
-    const phrase = escapeFtsPhrase(tok);
-    const ors = FTS_FIELDS.map((f) => `${f}:${phrase}`).join(" OR ");
-    return `(${ors})`;
-  });
-
-  return perToken.join(" AND ");
-}
-
-
-
 async function handleGet({ request, env }) {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
@@ -125,7 +91,11 @@ async function handleGet({ request, env }) {
   const from = normalizeDateParam(url.searchParams.get("from"));
   const to = normalizeDateParam(url.searchParams.get("to"));
   const type = normalizeTextParam(url.searchParams.get("type"));
+  const department = normalizeFilterTextParam(url.searchParams.get("department"));
+  const name = normalizeFilterTextParam(url.searchParams.get("name"));
+  const statusDeleted = normalizeStatusDeletedParam(url.searchParams.get("status"));
   const qRaw = normalizeTextParam(url.searchParams.get("q"));
+  const deleted = buildDeletedFilter(trash, statusDeleted);
 
   // LIKE keyword: keep it short to reduce abuse.
   const q = qRaw.length > 120 ? qRaw.slice(0, 120) : qRaw;
@@ -136,22 +106,7 @@ async function handleGet({ request, env }) {
   // Build WHERE + bind params (new schema)
   const where = [];
   const binds = [];
-
-  where.push("is_deleted=?");
-  binds.push(trash ? 1 : 0);
-
-  if (from) {
-    where.push("date >= ?");
-    binds.push(from);
-  }
-  if (to) {
-    where.push("date <= ?");
-    binds.push(to);
-  }
-  if (type) {
-    where.push("type = ?");
-    binds.push(type);
-  }
+  pushTicketFilters(where, binds, { deleted, from, to, type, department, name });
 
   // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
   const ftsQuery = q ? buildFtsQuery(q) : "";
@@ -167,25 +122,16 @@ async function handleGet({ request, env }) {
     binds.push(ftsQuery);
   } else if (q) {
     // Fallback: LIKE (kept for compatibility and non-tokenized languages).
-    const like = `%${q}%`;
-    where.push(`(
-      issue LIKE ? OR
-      department LIKE ? OR
-      name LIKE ? OR
-      solution LIKE ? OR
-      remarks LIKE ? OR
-      type LIKE ?
-    )`);
-    binds.push(like, like, like, like, like, like);
+    pushKeywordLikeFilter(where, binds, q);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const sortCol = trash ? "tickets.deleted_at" : "tickets.date";
+  const sortCol = deleted ? "tickets.deleted_at" : "tickets.date";
 
   // Keyset pagination: if cursor exists, we add an extra WHERE clause and avoid OFFSET.
   const cursorWhere = [];
   const cursorBinds = [];
-  let orderSql = trash
+  let orderSql = deleted
     ? "ORDER BY deleted_at ASC, id ASC"
     : "ORDER BY date ASC, id ASC";
 
@@ -204,7 +150,7 @@ async function handleGet({ request, env }) {
       cursorWhere.push(`(${sortCol} < ? OR (${sortCol} = ? AND tickets.id < ?))`);
       cursorBinds.push(cursor.v, cursor.v, cursor.id);
       // fetch previous page in DESC order then reverse in memory
-      orderSql = trash
+      orderSql = deleted
         ? "ORDER BY deleted_at DESC, id DESC"
         : "ORDER BY date DESC, id DESC";
     }
@@ -214,7 +160,7 @@ async function handleGet({ request, env }) {
     ? (whereSql ? `${whereSql} AND ${cursorWhere.join(" AND ")}` : `WHERE ${cursorWhere.join(" AND ")}`)
     : whereSql;
 
-  const listSql = cursor
+  const listSql = useCursor
     ? `${selectSql} ${fromSql} ${whereSqlWithCursor} ${orderSql} LIMIT ?`
     : `${selectSql} ${fromSql} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
   const countSql = `SELECT COUNT(*) as total ${fromSql} ${whereSql}`;
@@ -223,7 +169,7 @@ async function handleGet({ request, env }) {
     const total = Number(countRow?.total ?? 0) || 0;
 
     const listStmt = env.DB.prepare(listSql);
-    const bound = cursor
+    const bound = useCursor
       ? listStmt.bind(...binds, ...cursorBinds, pageSize)
       : listStmt.bind(...binds, pageSize, offset);
     const { results } = await bound.all();
@@ -233,7 +179,7 @@ async function handleGet({ request, env }) {
 
     const first = rows.length ? rows[0] : null;
     const last = rows.length ? rows[rows.length - 1] : null;
-    const cursorKey = trash ? "deleted_at" : "date";
+    const cursorKey = deleted ? "deleted_at" : "date";
     const prev_cursor = useCursor && first ? encodeCursor({ v: first[cursorKey], id: first.id }) : null;
     const next_cursor = useCursor && last ? encodeCursor({ v: last[cursorKey], id: last.id }) : null;
 
@@ -249,29 +195,14 @@ async function handleGet({ request, env }) {
       // Re-run query with LIKE (no JOIN) under the new schema.
       const whereLike = [];
       const bindsLike = [];
-      whereLike.push('is_deleted=?');
-      bindsLike.push(trash ? 1 : 0);
-      if (from) { whereLike.push('date >= ?'); bindsLike.push(from); }
-      if (to) { whereLike.push('date <= ?'); bindsLike.push(to); }
-      if (type) { whereLike.push('type = ?'); bindsLike.push(type); }
-      if (q) {
-        const like = `%${q}%`;
-        whereLike.push(`(
-          issue LIKE ? OR
-          department LIKE ? OR
-          name LIKE ? OR
-          solution LIKE ? OR
-          remarks LIKE ? OR
-          type LIKE ?
-        )`);
-        bindsLike.push(like, like, like, like, like, like);
-      }
+      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name });
+      pushKeywordLikeFilter(whereLike, bindsLike, q);
       const whereLikeSql = whereLike.length ? `WHERE ${whereLike.join(' AND ')}` : '';
-      const sortCol2 = trash ? 'deleted_at' : 'date';
+      const sortCol2 = deleted ? 'deleted_at' : 'date';
       // Keyset cursor logic reused (no JOIN)
       const cursorWhere2 = [];
       const cursorBinds2 = [];
-      let orderSql2 = trash ? 'ORDER BY deleted_at ASC, id ASC' : 'ORDER BY date ASC, id ASC';
+      let orderSql2 = deleted ? 'ORDER BY deleted_at ASC, id ASC' : 'ORDER BY date ASC, id ASC';
       if (useCursor) {
         if (direction === 'next') {
           cursorWhere2.push(`(${sortCol2} > ? OR (${sortCol2} = ? AND id > ?))`);
@@ -279,20 +210,20 @@ async function handleGet({ request, env }) {
         } else {
           cursorWhere2.push(`(${sortCol2} < ? OR (${sortCol2} = ? AND id < ?))`);
           cursorBinds2.push(cursor.v, cursor.v, cursor.id);
-          orderSql2 = trash ? 'ORDER BY deleted_at DESC, id DESC' : 'ORDER BY date DESC, id DESC';
+          orderSql2 = deleted ? 'ORDER BY deleted_at DESC, id DESC' : 'ORDER BY date DESC, id DESC';
         }
       }
       const whereLikeSqlWithCursor = cursorWhere2.length
         ? (whereLikeSql ? `${whereLikeSql} AND ${cursorWhere2.join(' AND ')}` : `WHERE ${cursorWhere2.join(' AND ')}`)
         : whereLikeSql;
-      const listLikeSql = cursor
+      const listLikeSql = useCursor
         ? `SELECT * FROM tickets ${whereLikeSqlWithCursor} ${orderSql2} LIMIT ?`
         : `SELECT * FROM tickets ${whereLikeSql} ${orderSql2} LIMIT ? OFFSET ?`;
       const countLikeSql = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
       const countRowLike = await env.DB.prepare(countLikeSql).bind(...bindsLike).first();
       const totalLike = Number(countRowLike?.total ?? 0) || 0;
       const stmtLike = env.DB.prepare(listLikeSql);
-      const boundLike = cursor
+      const boundLike = useCursor
         ? stmtLike.bind(...bindsLike, ...cursorBinds2, pageSize)
         : stmtLike.bind(...bindsLike, pageSize, offset);
       const { results: resLike } = await boundLike.all();
@@ -324,30 +255,15 @@ async function handleGet({ request, env }) {
       where2.push("type = ?");
       binds2.push(type);
     }
-  // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
-  const ftsQuery = q ? buildFtsQuery(q) : "";
-  const wantFts = Boolean(ftsQuery);
-
-  let fromSql = "FROM tickets";
-  let selectSql = "SELECT tickets.*";
-  if (wantFts) {
-    // Join FTS table (rowid maps to tickets.id).
-    fromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
-    where.push("tickets_fts MATCH ?");
-    binds.push(ftsQuery);
-  } else if (q) {
-    // Fallback: LIKE (kept for compatibility and non-tokenized languages).
-    const like = `%${q}%`;
-    where.push(`(
-      issue LIKE ? OR
-      department LIKE ? OR
-      name LIKE ? OR
-      solution LIKE ? OR
-      remarks LIKE ? OR
-      type LIKE ?
-    )`);
-    binds.push(like, like, like, like, like, like);
-  }
+    if (department) {
+      where2.push("department LIKE ?");
+      binds2.push(`%${department}%`);
+    }
+    if (name) {
+      where2.push("name LIKE ?");
+      binds2.push(`%${name}%`);
+    }
+    pushKeywordLikeFilter(where2, binds2, q, "");
 
     const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
     // Old schema fallback: no trash/cursor. We keep OFFSET mode; keyset not guaranteed.

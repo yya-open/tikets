@@ -418,6 +418,13 @@ async function runOneClickInit() {
     if (res.ok && data && data.ok) {
       setOneClickPill("on", "成功");
       setOneClickAtNow();
+      try { if (window.TicketDictionary) await window.TicketDictionary.load(); } catch (e) {}
+      try {
+        if (window.TicketHealth) {
+          const health = await window.TicketHealth.load();
+          window.TicketHealth.render(health);
+        }
+      } catch (e) {}
       if (typeof showToast === "function") showToast("一键初始化/自检完成 ✅", "success");
     } else if (res.status === 403) {
       clearEditKey();

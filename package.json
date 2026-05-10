@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test": "node --no-warnings --test tests/*.mjs"
+  }
+}

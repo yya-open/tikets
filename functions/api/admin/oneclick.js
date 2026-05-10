@@ -46,6 +46,7 @@ export async function onRequestPost({ request, env }) {
       ok: true,
       schema: { current: await getCurrentSchemaVersion(env.DB), latest: latestSchemaVersion() },
       fts: { exists: await tableExists(env.DB, "tickets_fts") },
+      dictionaries: { ticket_types: { exists: await tableExists(env.DB, "ticket_type_dict") } },
       indexes: { expected, missing: expected.filter((name) => !existing.has(name)) },
     };
   } catch (e) {

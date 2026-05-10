@@ -8,6 +8,9 @@ function getTodayLocalISO() {
 }
 
 function getDefaultTicketType() {
+  if (window.TicketDictionary && typeof window.TicketDictionary.getDefaultType === "function") {
+    return window.TicketDictionary.getDefaultType();
+  }
   return (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.ticketType) || "日常故障";
 }
 
@@ -80,6 +83,9 @@ function openTicketModal(reset = true) {
   const mask = document.getElementById("ticketModal");
   if (!mask) return;
   refreshQuickFillOptions();
+  if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
+    window.TicketDictionary.refreshSelects({ currentType: record.type || "" });
+  }
   mask.classList.add("show");
   if (reset) resetForm(true);
   if (window.TicketValidation) window.TicketValidation.initFormValidationUI();
@@ -101,6 +107,9 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTicke
 function resetForm(resetEditing = true) {
   document.getElementById("ticketForm")?.reset();
   document.getElementById("date").value = getTodayLocalISO();
+  if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
+    window.TicketDictionary.refreshSelects();
+  }
   document.getElementById("type").value = getDefaultTicketType();
   if (window.TicketValidation) window.TicketValidation.clearValidationErrors();
   if (resetEditing) {
@@ -114,6 +123,9 @@ function resetForm(resetEditing = true) {
 function fillFormFromRecord(record) {
   if (!record) return;
   refreshQuickFillOptions();
+  if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
+    window.TicketDictionary.refreshSelects();
+  }
   window.TicketAppState.editingId = record.id;
   window.TicketAppState.editingUpdatedAt = record.updated_at || "";
   window.TicketAppState.editingUpdatedAtTs = Number(record.updated_at_ts || 0) || 0;
