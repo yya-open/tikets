@@ -28,10 +28,21 @@
 <h2 style="margin:0;">管理入口</h2>
 <div class="muted" style="margin-top:8px;">集中管理写入口令、系统健康检查和故障类型字典。</div>
 </div>
+<button class="secondary" hidden id="btnAdminLock" type="button">退出管理员</button>
 <a class="button-link secondary" href="/">返回工单页面</a>
 </div>
 </div>
 
+<div class="card admin-gate" id="adminGate">
+<h2>管理员验证</h2>
+<div class="muted">请输入并验证写入口令后，才能查看系统设置、系统管理和故障类型字典。</div>
+<div class="admin-gate-actions">
+<button class="primary" id="btnAdminUnlock" type="button">输入 / 验证口令</button>
+<span class="admin-gate-message" id="adminGateMessage"></span>
+</div>
+</div>
+
+<div id="adminContent" hidden>
 <details class="card fold-card" id="settingsCard" data-fold-key="settings-main" open>
   <summary>
     <div class="fold-title-wrap">
@@ -169,10 +180,11 @@
 </details>
 </div>
 </details>
+</div>
 
 <!-- 写入口令设置 -->
 <div class="ticket-modal-mask" id="keyModal">
-  <div class="ticket-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle" style="width:min(640px,96vw);">
+  <div class="ticket-modal-panel key-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
     <div class="ticket-modal-header">
       <div style="font-weight:700;font-size:18px;" id="keyModalTitle">写入口令设置</div>
       <button type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
@@ -219,6 +231,6 @@
 </div>
 </div>
 
-<script src="/assets/js/ticket-bootstrap.js"></script>
+<script src="/assets/js/ticket-admin-bootstrap.js"></script>
 </body>
 </html>
