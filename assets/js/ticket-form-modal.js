@@ -83,8 +83,8 @@ function openTicketModal(reset = true) {
   const mask = document.getElementById("ticketModal");
   if (!mask) return;
   refreshQuickFillOptions();
-  if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
-    window.TicketDictionary.refreshSelects({ currentType: record.type || "" });
+  if (reset && window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
+    window.TicketDictionary.refreshSelects();
   }
   mask.classList.add("show");
   if (reset) resetForm(true);
@@ -124,7 +124,7 @@ function fillFormFromRecord(record) {
   if (!record) return;
   refreshQuickFillOptions();
   if (window.TicketDictionary && typeof window.TicketDictionary.refreshSelects === "function") {
-    window.TicketDictionary.refreshSelects();
+    window.TicketDictionary.refreshSelects({ currentType: record.type || "" });
   }
   window.TicketAppState.editingId = record.id;
   window.TicketAppState.editingUpdatedAt = record.updated_at || "";
