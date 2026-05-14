@@ -52,7 +52,7 @@ function resetForm(resetEditing = true) {
     window.TicketAppState.editingId = null;
     window.TicketAppState.editingUpdatedAt = "";
     window.TicketAppState.editingUpdatedAtTs = 0;
-    document.getElementById("submitBtn").innerText = "确定";
+    document.getElementById("submitBtn").innerText = "保存工单";
   }
 }
 
@@ -103,8 +103,10 @@ async function addOrUpdateRecord() {
   const payload = checked.payload || rawPayload;
 
   const btn = document.getElementById("submitBtn");
+  const form = document.getElementById("ticketForm");
   const oldText = btn ? btn.innerText : "";
-  if (btn) { btn.disabled = true; btn.innerText = "保存中..."; }
+  if (form) form.setAttribute("aria-busy", "true");
+  if (btn) { btn.disabled = true; btn.innerText = "保存中…"; }
 
   try {
     if (state.editingId === null) {
@@ -141,7 +143,7 @@ async function addOrUpdateRecord() {
       state.editingId = null;
       state.editingUpdatedAt = "";
       state.editingUpdatedAtTs = 0;
-      document.getElementById("submitBtn").innerText = "确定";
+      document.getElementById("submitBtn").innerText = "保存工单";
     }
 
     resetForm(false);
@@ -157,9 +159,10 @@ async function addOrUpdateRecord() {
     const msg = e && e.status === 500 ? "保存失败：服务端未配置 EDIT_KEY。" : "保存失败：请检查网络或后端是否正常。";
     showToast(msg, "error");
   } finally {
+    if (form) form.setAttribute("aria-busy", "false");
     if (btn) {
       btn.disabled = false;
-      btn.innerText = state.editingId === null ? "确定" : (oldText || "保存修改");
+      btn.innerText = state.editingId === null ? "保存工单" : (oldText || "保存修改");
     }
   }
 }

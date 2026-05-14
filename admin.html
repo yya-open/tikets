@@ -4,6 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="#f4f7fb" name="theme-color"/>
 <title>管理员页面 - 工单记录系统</title>
 <script src="/assets/js/ticket-config.js"></script>
 <script src="/assets/js/ticket-auth.js"></script>
@@ -20,25 +21,39 @@
 <link rel="stylesheet" href="/assets/app.css"/>
 </head>
 <body>
+<a class="skip-link" href="#mainContent">跳到主要内容</a>
+<main class="page-shell" id="mainContent" tabindex="-1">
+<header class="page-header">
+<div class="page-header-main">
+<p class="page-eyebrow">系统管理</p>
 <h1>管理员页面</h1>
-
-<div class="card">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-<div>
-<h2 style="margin:0;">管理入口</h2>
-<div class="muted" style="margin-top:8px;">集中管理写入口令、系统健康检查和故障类型字典。</div>
+<p class="page-summary">集中管理写入口令、健康检查、一键自检与故障类型字典。</p>
 </div>
+<div class="page-header-meta">
+<span class="page-meta-chip">管理视图</span>
+<span class="page-meta-chip">受口令保护</span>
+</div>
+</header>
+
+<section class="card section-toolbar" aria-labelledby="adminEntryTitle">
+<div class="section-toolbar-head">
+<div>
+<h2 id="adminEntryTitle" style="margin:0;">管理入口</h2>
+<div class="muted section-toolbar-desc">先完成管理员验证，再访问系统设置、健康检查与字典管理。</div>
+</div>
+<div class="section-toolbar-actions">
 <button class="secondary" hidden id="btnAdminLock" type="button">退出管理员</button>
 <a class="button-link secondary" href="/">返回工单页面</a>
 </div>
 </div>
+</section>
 
 <div class="card admin-gate" id="adminGate">
 <h2>管理员验证</h2>
 <div class="muted">请输入并验证写入口令后，才能查看系统设置、系统管理和故障类型字典。</div>
 <div class="admin-gate-actions">
 <button class="primary" id="btnAdminUnlock" type="button">输入 / 验证口令</button>
-<span class="admin-gate-message" id="adminGateMessage"></span>
+<span aria-live="polite" class="admin-gate-message" id="adminGateMessage"></span>
 </div>
 </div>
 
@@ -125,7 +140,7 @@
 <span class="settings-fold-arrow" aria-hidden="true"></span>
 </summary>
 <div class="settings-desc">
-<div id="healthSummary" style="font-size:14px;">加载中...</div>
+<div aria-live="polite" id="healthSummary" style="font-size:14px;">加载中…</div>
 </div>
 </details>
 
@@ -147,14 +162,14 @@
 <div class="dict-editor">
 <div>
 <label for="typeDictName">类型名称</label>
-<input id="typeDictName" type="text" maxlength="80" placeholder="例如：VPN/网络问题"/>
+<input autocomplete="off" id="typeDictName" maxlength="80" name="typeDictName" placeholder="例如：VPN/网络问题…" spellcheck="false" type="text"/>
 </div>
 <div>
 <label for="typeDictSort">排序</label>
-<input id="typeDictSort" type="number" min="0" step="10" value="0"/>
+<input autocomplete="off" id="typeDictSort" inputmode="numeric" name="typeDictSort" type="number" min="0" step="10" value="0"/>
 </div>
 <div class="dict-switch">
-<label><input id="typeDictEnabled" type="checkbox" checked/> 启用</label>
+<label><input id="typeDictEnabled" name="typeDictEnabled" type="checkbox" checked/> 启用</label>
 </div>
 <div class="dict-actions">
 <button type="button" class="primary" id="btnSaveTypeDict">保存</button>
@@ -187,13 +202,13 @@
   <div class="ticket-modal-panel key-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
     <div class="ticket-modal-header">
       <div style="font-weight:700;font-size:18px;" id="keyModalTitle">写入口令设置</div>
-      <button type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
+      <button aria-label="关闭口令设置" type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
     </div>
 
     <div class="key-form">
       <div class="key-row">
         <label for="editKeyInput"><b>写入口令</b></label>
-        <input id="editKeyInput" class="key-input" type="password" autocomplete="off" placeholder="输入共享口令（用于新增/编辑/删除/导入）"/>
+        <input id="editKeyInput" class="key-input" name="editKeyInput" type="password" autocomplete="off" placeholder="输入共享口令（用于新增 / 编辑 / 删除 / 导入）"/>
       </div>
 
       <div class="key-row">
@@ -230,7 +245,7 @@
 <div class="modal-footer" id="modalFooter"></div>
 </div>
 </div>
-
+ </main>
 <script src="/assets/js/ticket-admin-bootstrap.js"></script>
 </body>
 </html>

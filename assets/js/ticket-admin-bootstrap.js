@@ -64,7 +64,8 @@
     const oldText = btn ? btn.textContent : "";
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "验证中...";
+      btn.setAttribute("aria-busy", "true");
+      btn.textContent = "验证中…";
     }
 
     try {
@@ -93,6 +94,7 @@
     } finally {
       if (btn) {
         btn.disabled = false;
+        btn.setAttribute("aria-busy", "false");
         btn.textContent = oldText || "输入 / 验证口令";
       }
     }

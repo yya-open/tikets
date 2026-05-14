@@ -37,11 +37,14 @@
 
   async function refresh() {
     const btn = document.getElementById('btnRefreshHealth');
+    const summary = document.getElementById('healthSummary');
     const oldText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '检查中...';
+      btn.setAttribute('aria-busy', 'true');
+      btn.textContent = '检查中…';
     }
+    if (summary) summary.setAttribute('aria-busy', 'true');
     try {
       const data = await load();
       render(data);
@@ -53,8 +56,10 @@
       if (typeof showToast === 'function') showToast('系统健康检查失败。', 'error');
       return null;
     } finally {
+      if (summary) summary.setAttribute('aria-busy', 'false');
       if (btn) {
         btn.disabled = false;
+        btn.setAttribute('aria-busy', 'false');
         btn.textContent = oldText || '刷新检查';
       }
     }
