@@ -387,9 +387,9 @@ function openOneClickDetails() {
 }
 
 async function runOneClickInit() {
-  const key = getEditKey();
+  const key = (typeof getAdminKey === "function" ? getAdminKey() : "") || getEditKey();
   if (!key) {
-    openKeyModal();
+    openKeyModal("admin");
     if (typeof showToast === "function") showToast("请先设置管理员口令，再执行一键初始化。", "warning");
     return;
   }
@@ -398,11 +398,17 @@ async function runOneClickInit() {
 
   try {
     if (typeof showToast === "function") showToast("正在执行：迁移 → FTS 重建 → 自检…", "info");
-    const res = await fetch("/api/admin/oneclick", {
-      method: "POST",
-      headers: { "X-EDIT-KEY": key },
-      cache: "no-store",
-    });
+    const res = window.TicketApi && typeof window.TicketApi.authedFetch === "function"
+      ? await window.TicketApi.authedFetch("/api/admin/oneclick", {
+          method: "POST",
+          authScope: "admin",
+          cache: "no-store",
+        })
+      : await fetch("/api/admin/oneclick", {
+          method: "POST",
+          headers: { "X-ADMIN-KEY": key },
+          cache: "no-store",
+        });
     const data = await res.json().catch(() => ({}));
     __oneClickLast = data;
 
@@ -418,12 +424,14 @@ async function runOneClickInit() {
       } catch (e) {}
       if (typeof showToast === "function") showToast("一键初始化/自检完成 ✅", "success");
     } else if (res.status === 403) {
+      if (typeof clearAdminKey === "function") clearAdminKey();
+      if (typeof clearAdminKeySetAt === "function") clearAdminKeySetAt();
       clearEditKey();
       clearEditKeySetAt();
       updateEditKeyStatus();
       setOneClickPill("off", "无权限");
       if (typeof showToast === "function") showToast("管理员口令无效（403），请重新设置。", "error");
-      openKeyModal();
+      openKeyModal("admin");
     } else {
       setOneClickPill("off", "失败");
       setOneClickAtNow();
@@ -435,7 +443,7 @@ async function runOneClickInit() {
     setOneClickAtNow();
     if (typeof showToast === "function") showToast("一键初始化/自检异常，可点“查看详情”。", "error");
   } finally {
-    if (btn) btn.disabled = !getEditKey();
+    if (btn) btn.disabled = !((typeof getAdminKey === "function" ? getAdminKey() : "") || getEditKey());
   }
 }
 

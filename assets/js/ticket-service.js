@@ -83,7 +83,7 @@
   }
 
   async function runAdminMigrate() {
-    const res = await window.TicketApi.authedFetch('/api/admin/migrate', { method: 'POST' });
+    const res = await window.TicketApi.authedFetch('/api/admin/migrate', { method: 'POST', authScope: 'admin' });
     await ensureOk(res, 'admin migrate');
     return await res.json().catch(() => ({}));
   }

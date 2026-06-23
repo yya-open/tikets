@@ -36,6 +36,8 @@ async function toggleTrashView() {
 // ===== 写入/管理员口令（保护写操作与管理操作） =====
 const EDIT_KEY_STORAGE = "ticket_edit_key";
 const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
+const ADMIN_KEY_STORAGE = "ticket_admin_key";
+const ADMIN_KEY_SET_AT_STORAGE = "ticket_admin_key_set_at";
 
 function getEditKey() {
   if (window.TicketAuth && typeof window.TicketAuth.get === "function") return window.TicketAuth.get();
@@ -62,19 +64,81 @@ function clearEditKeySetAt() {
   try { sessionStorage.removeItem(EDIT_KEY_SET_AT_STORAGE); } catch {}
 }
 
+function getAdminKey() {
+  if (window.TicketAuth && typeof window.TicketAuth.getAdmin === "function") return window.TicketAuth.getAdmin();
+  try { return sessionStorage.getItem(ADMIN_KEY_STORAGE) || ""; } catch { return ""; }
+}
+function setAdminKey(key) {
+  if (window.TicketAuth && typeof window.TicketAuth.setAdmin === "function") return window.TicketAuth.setAdmin(key);
+  try { sessionStorage.setItem(ADMIN_KEY_STORAGE, String(key || "")); } catch {}
+}
+function clearAdminKey() {
+  if (window.TicketAuth && typeof window.TicketAuth.clearAdmin === "function") return window.TicketAuth.clearAdmin();
+  try { sessionStorage.removeItem(ADMIN_KEY_STORAGE); } catch {}
+}
+function getAdminKeySetAt() {
+  if (window.TicketAuth && typeof window.TicketAuth.getAdminSetAt === "function") return window.TicketAuth.getAdminSetAt();
+  try { return sessionStorage.getItem(ADMIN_KEY_SET_AT_STORAGE) || ""; } catch { return ""; }
+}
+function setAdminKeySetAtNow() {
+  if (window.TicketAuth && typeof window.TicketAuth.setAdminSetAtNow === "function") return window.TicketAuth.setAdminSetAtNow();
+  try { sessionStorage.setItem(ADMIN_KEY_SET_AT_STORAGE, new Date().toISOString()); } catch {}
+}
+function clearAdminKeySetAt() {
+  if (window.TicketAuth && typeof window.TicketAuth.clearAdminSetAt === "function") return window.TicketAuth.clearAdminSetAt();
+  try { sessionStorage.removeItem(ADMIN_KEY_SET_AT_STORAGE); } catch {}
+}
+
+function normalizeKeyScope(scope) {
+  return scope === "admin" ? "admin" : "edit";
+}
+
+function defaultKeyScope() {
+  return document.getElementById("adminGate") ? "admin" : "edit";
+}
+
+function getKeyForScope(scope) {
+  return normalizeKeyScope(scope) === "admin" ? (getAdminKey() || getEditKey()) : getEditKey();
+}
+
+function setKeyForScope(scope, key) {
+  if (normalizeKeyScope(scope) === "admin") {
+    setAdminKey(key);
+    setAdminKeySetAtNow();
+    return;
+  }
+  setEditKey(key);
+  setEditKeySetAtNow();
+}
+
+function clearKeyForScope(scope) {
+  if (normalizeKeyScope(scope) === "admin") {
+    clearAdminKey();
+    clearAdminKeySetAt();
+    return;
+  }
+  clearEditKey();
+  clearEditKeySetAt();
+}
+
+let keyModalScope = "";
 let __editKeyWaiters = [];
-function resolveEditKeyWaiters(value) {
+let __adminKeyWaiters = [];
+function resolveKeyWaiters(scope, value) {
+  const normalized = normalizeKeyScope(scope);
+  const waiters = normalized === "admin" ? __adminKeyWaiters : __editKeyWaiters;
   try {
-    __editKeyWaiters.forEach((r) => r(value));
+    waiters.forEach((r) => r(value));
   } finally {
-    __editKeyWaiters = [];
+    if (normalized === "admin") __adminKeyWaiters = [];
+    else __editKeyWaiters = [];
   }
 }
 
 function updateEditKeyStatus() {
-  const key = getEditKey();
+  const key = getEditKey() || getAdminKey();
   const on = !!key;
-  const setAt = formatISOToLocal(getEditKeySetAt());
+  const setAt = formatISOToLocal(getAdminKeySetAt() || getEditKeySetAt());
 
   const applyPill = (el) => {
     if (!el) return;
@@ -95,12 +159,13 @@ function updateEditKeyStatus() {
   if (btn) btn.disabled = !on;
 }
 
-function openKeyModal() {
+function openKeyModal(scope) {
+  keyModalScope = normalizeKeyScope(scope || defaultKeyScope());
   const modal = document.getElementById("keyModal");
   if (!modal) return;
   modal.classList.add("show");
   const input = document.getElementById("editKeyInput");
-  if (input) input.value = getEditKey() || "";
+  if (input) input.value = getKeyForScope(keyModalScope) || "";
   const show = document.getElementById("editKeyShow");
   if (show) show.checked = false;
   if (input) input.type = "password";
@@ -112,7 +177,7 @@ function closeKeyModal() {
   const modal = document.getElementById("keyModal");
   if (!modal) return;
   modal.classList.remove("show");
-  resolveEditKeyWaiters(getEditKey() || "");
+  resolveKeyWaiters(keyModalScope, getKeyForScope(keyModalScope) || "");
 }
 
 function onKeyModalMaskClick(e) {
@@ -130,61 +195,73 @@ function saveEditKeyFromUI() {
   const input = document.getElementById("editKeyInput");
   const key = (input ? input.value : "").trim();
   if (!key) {
-    clearEditKey();
-    clearEditKeySetAt();
+    clearKeyForScope(keyModalScope);
     updateEditKeyStatus();
-    resolveEditKeyWaiters("");
+    resolveKeyWaiters(keyModalScope, "");
     if (typeof showToast === "function") showToast("已清除口令。", "success");
     return;
   }
-  setEditKey(key);
-  setEditKeySetAtNow();
+  setKeyForScope(keyModalScope, key);
   updateEditKeyStatus();
-  resolveEditKeyWaiters(key);
+  resolveKeyWaiters(keyModalScope, key);
   if (typeof showToast === "function") showToast("口令已保存（当前浏览器会话内有效）。", "success");
 }
 
 function clearEditKeyFromUI() {
-  clearEditKey();
-  clearEditKeySetAt();
+  clearKeyForScope(keyModalScope);
   const input = document.getElementById("editKeyInput");
   if (input) input.value = "";
   updateEditKeyStatus();
-  resolveEditKeyWaiters("");
+  resolveKeyWaiters(keyModalScope, "");
   if (typeof showToast === "function") showToast("已清除口令。", "success");
 }
 
 async function ensureEditKey() {
   const existing = getEditKey();
   if (existing) return existing;
-  openKeyModal();
+  openKeyModal("edit");
   if (typeof showToast === "function") showToast("请先设置写入/管理员口令后再继续。", "warning");
   return await new Promise((resolve) => {
     __editKeyWaiters.push(resolve);
   });
 }
 
-async function testEditKey() {
-  const key = getEditKey();
+async function ensureAdminKey() {
+  const existing = getAdminKey() || getEditKey();
+  if (existing) return existing;
+  openKeyModal("admin");
+  if (typeof showToast === "function") showToast("Please set an admin key before continuing.", "warning");
+  return await new Promise((resolve) => {
+    __adminKeyWaiters.push(resolve);
+  });
+}
+
+async function testEditKey(scope) {
+  const keyScope = normalizeKeyScope(scope || keyModalScope || defaultKeyScope());
+  const key = getKeyForScope(keyScope);
   if (!key) {
-    openKeyModal();
+    openKeyModal(keyScope);
     if (typeof showToast === "function") showToast("请先设置写入/管理员口令，再进行测试。", "warning");
     return;
   }
   try {
-    const res = await fetch("/api/auth-test", {
+    const isAdminScope = keyScope === "admin";
+    const res = await fetch(isAdminScope ? "/api/auth-test?scope=admin" : "/api/auth-test", {
       method: "GET",
-      headers: { "X-EDIT-KEY": key },
+      headers: isAdminScope ? { "X-ADMIN-KEY": key } : { "X-EDIT-KEY": key },
       cache: "no-store",
     });
     if (res.ok) {
       if (typeof showToast === "function") showToast("口令测试通过 ✅", "success");
     } else if (res.status === 401 || res.status === 403) {
-      clearEditKey();
-      clearEditKeySetAt();
+      if (isAdminScope && !getAdminKey()) {
+        clearEditKey();
+        clearEditKeySetAt();
+      }
+      clearKeyForScope(keyScope);
       updateEditKeyStatus();
       if (typeof showToast === "function") showToast(`口令错误（${res.status}），请重新设置。`, "error");
-      openKeyModal();
+      openKeyModal(keyScope);
     } else if (res.status === 500) {
       if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY 或 ADMIN_KEY（500）。", "error");
     } else {
@@ -206,7 +283,7 @@ function isNoKeyError(err) {
   const status = Number(err && err.status);
   const code = String((err && err.code) || '');
   const msg = String((err && err.message) || err || "");
-  return status === 401 || status === 403 || /\b401\b/.test(msg) || /\b403\b/.test(msg) || /Unauthorized/i.test(msg) || /invalid_edit_key/i.test(msg) || code === 'missing_edit_key' || code === 'invalid_edit_key';
+  return status === 401 || status === 403 || /\b401\b/.test(msg) || /\b403\b/.test(msg) || /Unauthorized/i.test(msg) || /invalid_(edit|admin)_key/i.test(msg) || code === 'missing_edit_key' || code === 'invalid_edit_key' || code === 'missing_admin_key' || code === 'invalid_admin_key';
 }
 
 window.loadViewMode = loadViewMode;
@@ -219,6 +296,12 @@ window.clearEditKey = clearEditKey;
 window.getEditKeySetAt = getEditKeySetAt;
 window.setEditKeySetAtNow = setEditKeySetAtNow;
 window.clearEditKeySetAt = clearEditKeySetAt;
+window.getAdminKey = getAdminKey;
+window.setAdminKey = setAdminKey;
+window.clearAdminKey = clearAdminKey;
+window.getAdminKeySetAt = getAdminKeySetAt;
+window.setAdminKeySetAtNow = setAdminKeySetAtNow;
+window.clearAdminKeySetAt = clearAdminKeySetAt;
 window.updateEditKeyStatus = updateEditKeyStatus;
 window.openKeyModal = openKeyModal;
 window.closeKeyModal = closeKeyModal;
@@ -227,6 +310,7 @@ window.toggleEditKeyVisibility = toggleEditKeyVisibility;
 window.saveEditKeyFromUI = saveEditKeyFromUI;
 window.clearEditKeyFromUI = clearEditKeyFromUI;
 window.ensureEditKey = ensureEditKey;
+window.ensureAdminKey = ensureAdminKey;
 window.testEditKey = testEditKey;
 window.authedFetch = authedFetch;
 window.isNoKeyError = isNoKeyError;

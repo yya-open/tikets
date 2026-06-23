@@ -226,7 +226,7 @@
       return false;
     } catch (e) {
       if (window.isNoKeyError && window.isNoKeyError(e)) {
-        window.openKeyModal && window.openKeyModal();
+        window.openKeyModal && window.openKeyModal("admin");
         if (typeof showToast === "function") showToast("请先设置有效写入口令。", "error");
         return false;
       }

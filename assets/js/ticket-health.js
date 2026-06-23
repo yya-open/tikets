@@ -1,10 +1,16 @@
 (function () {
   async function load() {
     const headers = new Headers({ 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
-    const key = (window.TicketAuth && typeof window.TicketAuth.get === 'function')
-      ? window.TicketAuth.get()
-      : (typeof window.getEditKey === 'function' ? window.getEditKey() : '');
-    if (key) headers.set('X-EDIT-KEY', key);
+    if (window.TicketApi && typeof window.TicketApi.authedFetch === 'function') {
+      const res = await window.TicketApi.authedFetch('/api/health', { authScope: 'admin', cache: 'no-store', headers });
+      if (!res.ok) throw new Error(`health failed: ${res.status}`);
+      return await res.json();
+    }
+    const key = (typeof window.getAdminKey === 'function' ? window.getAdminKey() : '')
+      || (window.TicketAuth && typeof window.TicketAuth.getAdmin === 'function' ? window.TicketAuth.getAdmin() : '')
+      || (typeof window.getEditKey === 'function' ? window.getEditKey() : '')
+      || (window.TicketAuth && typeof window.TicketAuth.get === 'function' ? window.TicketAuth.get() : '');
+    if (key) headers.set('X-ADMIN-KEY', key);
     const res = await fetch('/api/health', { cache: 'no-store', headers });
     if (!res.ok) throw new Error(`health failed: ${res.status}`);
     return await res.json();

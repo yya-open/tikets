@@ -271,3 +271,35 @@ test("replace-all import requires explicit confirmation", async () => {
   assert.equal(res.status, 400);
   assert.equal(data.code, "confirmation_required");
 });
+
+test("frontend keeps admin credentials separate from edit credentials", () => {
+  const authModule = readFileSync(new URL("../assets/js/modules/ticket-auth.module.js", import.meta.url), "utf8");
+  const session = readFileSync(new URL("../assets/js/ticket-session.js", import.meta.url), "utf8");
+
+  assert.match(authModule, /ticket_admin_key/);
+  assert.match(authModule, /export function getAdmin\(\)/);
+  assert.match(authModule, /export function setAdmin\(value\)/);
+  assert.match(authModule, /clearAdminSetAt/);
+
+  assert.match(session, /function ensureAdminKey\(\)/);
+  assert.match(session, /window\.ensureAdminKey = ensureAdminKey/);
+  assert.match(session, /X-ADMIN-KEY/);
+});
+
+test("frontend admin-only endpoints request admin-scoped credentials", () => {
+  const apiModule = readFileSync(new URL("../assets/js/modules/ticket-api.module.js", import.meta.url), "utf8");
+  const service = readFileSync(new URL("../assets/js/ticket-service.js", import.meta.url), "utf8");
+  const settings = readFileSync(new URL("../assets/js/ticket-settings-tools.js", import.meta.url), "utf8");
+  const health = readFileSync(new URL("../assets/js/ticket-health.js", import.meta.url), "utf8");
+  const adminBootstrap = readFileSync(new URL("../assets/js/ticket-admin-bootstrap.js", import.meta.url), "utf8");
+  const dictionary = readFileSync(new URL("../assets/js/ticket-dictionary.js", import.meta.url), "utf8");
+
+  assert.match(apiModule, /authScope === "admin"/);
+  assert.match(apiModule, /headers\.set\(isAdminScope \? "X-ADMIN-KEY" : "X-EDIT-KEY"/);
+  assert.match(service, /\/api\/admin\/migrate', \{ method: 'POST', authScope: 'admin' \}/);
+  assert.match(settings, /\/api\/admin\/oneclick/);
+  assert.match(settings, /authScope: "admin"/);
+  assert.match(health, /\/api\/health', \{ authScope: 'admin'/);
+  assert.match(adminBootstrap, /ensureAdminKey/);
+  assert.match(dictionary, /openKeyModal\("admin"\)/);
+});

@@ -53,7 +53,10 @@
   }
 
   async function unlockAdmin({ silent = false } = {}) {
-    const key = typeof getEditKey === "function" ? getEditKey() : "";
+    const adminKey = typeof getAdminKey === "function" ? getAdminKey() : "";
+    const editFallbackKey = typeof getEditKey === "function" ? getEditKey() : "";
+    const key = adminKey || editFallbackKey;
+    const usingAdminKey = !!adminKey;
     if (!key) {
       setAdminVisible(false);
       if (!silent) setGateMessage("请先输入管理员写入口令。", "error");
@@ -71,8 +74,13 @@
     try {
       const ok = await validateAdminKey(key);
       if (!ok) {
-        if (typeof clearEditKey === "function") clearEditKey();
-        if (typeof clearEditKeySetAt === "function") clearEditKeySetAt();
+        if (usingAdminKey) {
+          if (typeof clearAdminKey === "function") clearAdminKey();
+          if (typeof clearAdminKeySetAt === "function") clearAdminKeySetAt();
+        } else {
+          if (typeof clearEditKey === "function") clearEditKey();
+          if (typeof clearEditKeySetAt === "function") clearEditKeySetAt();
+        }
         if (typeof updateEditKeyStatus === "function") updateEditKeyStatus();
         setAdminVisible(false);
         setGateMessage("口令验证失败，请重新输入。", "error");
@@ -101,20 +109,28 @@
   }
 
   async function requestUnlock() {
-    if (typeof ensureEditKey === "function") {
+    if (typeof ensureAdminKey === "function") {
+      const key = await ensureAdminKey();
+      if (!key) {
+        setGateMessage("Admin key is not set.", "error");
+        return;
+      }
+    } else if (typeof ensureEditKey === "function") {
       const key = await ensureEditKey();
       if (!key) {
         setGateMessage("未设置口令。", "error");
         return;
       }
     } else if (typeof openKeyModal === "function") {
-      openKeyModal();
+      openKeyModal("admin");
       return;
     }
     await unlockAdmin({ silent: false });
   }
 
   function lockAdmin() {
+    if (typeof clearAdminKey === "function") clearAdminKey();
+    if (typeof clearAdminKeySetAt === "function") clearAdminKeySetAt();
     if (typeof clearEditKey === "function") clearEditKey();
     if (typeof clearEditKeySetAt === "function") clearEditKeySetAt();
     if (typeof updateEditKeyStatus === "function") updateEditKeyStatus();
