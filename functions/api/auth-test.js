@@ -5,7 +5,7 @@ import { jsonResponse } from "../_lib/http.js";
  * GET /api/auth-test -> verify edit key.
  */
 export async function onRequestGet({ request, env }) {
-  const denied = requireEditKey(request, env);
+  const denied = await requireEditKey(request, env);
   if (denied) return denied;
   return jsonResponse({ ok: true }, { headers: { "cache-control": "no-store" } });
 }

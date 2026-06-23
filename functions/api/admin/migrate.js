@@ -1,4 +1,4 @@
-import { requireEditKey } from "../../_lib/auth.js";
+import { requireAdminKey } from "../../_lib/auth.js";
 import { jsonResponse } from "../../_lib/http.js";
 import {
   applyPendingMigrations,
@@ -7,7 +7,10 @@ import {
   listPendingMigrations,
 } from "../../_lib/schema_migrate.js";
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
+  const auth = await requireAdminKey(request, env);
+  if (auth) return auth;
+
   try {
     const current = await getCurrentSchemaVersion(env.DB);
     const latest = latestSchemaVersion();
@@ -19,7 +22,7 @@ export async function onRequestGet({ env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireAdminKey(request, env);
   if (auth) return auth;
   try {
     const before = await getCurrentSchemaVersion(env.DB);

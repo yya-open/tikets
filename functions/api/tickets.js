@@ -1,5 +1,5 @@
 import { requireEditKey } from "../_lib/auth.js";
-import { jsonResponse, respondCachedJson } from "../_lib/http.js";
+import { isPublicCacheableGet, jsonResponse, respondCachedJson } from "../_lib/http.js";
 import { validateTicketPayload } from "../_lib/validation.js";
 import {
   buildDeletedFilter,
@@ -283,7 +283,7 @@ async function handleGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   let body;
@@ -317,18 +317,10 @@ export async function onRequestPost({ request, env }) {
   return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201, headers: { "cache-control": "no-store" } });
 }
 
-function isCacheableGet(request) {
-  // Only cache public read requests (no edit key)
-  if ((request.method || "GET").toUpperCase() !== "GET") return false;
-  const k = request.headers.get("x-edit-key") || request.headers.get("X-EDIT-KEY");
-  if (k && String(k).trim()) return false;
-  return true;
-}
-
 export async function onRequestGet(ctx) {
   const request = ctx.request;
   const env = ctx.env;
-  if (!isCacheableGet(request)) {
+  if (!isPublicCacheableGet(request)) {
     return await handleGet({ request, env });
   }
 

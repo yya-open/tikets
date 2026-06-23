@@ -1,4 +1,4 @@
-import { requireEditKey } from "../../_lib/auth.js";
+import { requireAdminKey } from "../../_lib/auth.js";
 import { jsonResponse } from "../../_lib/http.js";
 import { applyPendingMigrations, getCurrentSchemaVersion, latestSchemaVersion, listPendingMigrations } from "../../_lib/schema_migrate.js";
 
@@ -13,7 +13,7 @@ async function getIndexes(db, tableName) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
   const out = { ok: true, now: new Date().toISOString(), steps: {} };

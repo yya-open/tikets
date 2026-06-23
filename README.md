@@ -10,7 +10,7 @@
 - DELETE `/api/tickets/:id/hard`（彻底删除）
 - POST `/api/import/preview`（安全合并导入预演：仅备份更新更晚才覆盖）
 - POST `/api/import/apply`（安全合并导入应用）
-- PUT `/api/import`（危险：覆盖云端数据，仅用于灾难恢复）
+- PUT `/api/import`（危险：覆盖云端数据，仅用于灾难恢复；需要管理员口令与确认短语）
 
 ## 1. 部署到 Cloudflare Pages
 
@@ -72,23 +72,39 @@ ALTER TABLE tickets ADD COLUMN deleted_at TEXT;
 
 - GET `/api/tickets`：公开
 - POST/PUT/DELETE `/api/*`：必须携带 `X-EDIT-KEY` 请求头
+- 管理员/高危接口（如 `/api/admin/migrate`、`/api/admin/oneclick`、`/api/fts/rebuild`、`PUT /api/import`）优先使用 `ADMIN_KEY`；如果未配置 `ADMIN_KEY`，则回退使用 `EDIT_KEY`。
+- 如果配置了 `ADMIN_KEY`，管理员口令也可作为普通写入口令使用。
 
 ### 0.1 在 Cloudflare Pages 配置 EDIT_KEY（必须）
 
 Pages 项目 → Settings → Variables and Secrets（或 Environment Variables）中新增：
 - `EDIT_KEY`：你设置的共享口令
+- `ADMIN_KEY`：可选。用于迁移、自检、FTS 重建和整库覆盖导入等高危管理操作；建议与 `EDIT_KEY` 不同。
 
 本地开发可在 `wrangler.toml` 加：
 
 ```toml
 [vars]
 EDIT_KEY = "你自己的口令"
+ADMIN_KEY = "你的管理员口令"
 ```
 
 ### 0.2 前端如何提供口令
 
 页面右上角有「设置写入口令」按钮，会把口令保存到浏览器 sessionStorage（仅当前浏览器会话有效）；
 之后新增/编辑/删除/导入都会自动带上 `X-EDIT-KEY`。
+
+### 0.3 整库覆盖导入保护
+
+安全合并导入请继续使用 `/api/import/preview` + `/api/import/apply`。
+
+`PUT /api/import` 会清空并重建云端 `tickets` 数据，仅用于灾难恢复。调用时除管理员口令外，请求体还必须包含：
+
+```json
+{
+  "confirm": "REPLACE_ALL_TICKETS"
+}
+```
 
 ## 系统管理
 
@@ -120,8 +136,10 @@ npm test
   - `etag` 存在
   - Cloudflare 侧会逐步出现 `cf-cache-status: HIT`（第二次请求常见）
 
-### 2) D1 索引（必须手动执行一次）
-请在 D1 Console 执行以下文件的 SQL（可重复执行，不会报错）：
+### 2) D1 索引
+推荐通过「一键初始化 / 自检」或 `POST /api/admin/migrate` 自动应用索引迁移。
+
+如果不使用内置迁移，也可以在 D1 Console 手动执行以下文件的 SQL（可重复执行，不会报错）：
 - `migrations/perf_indexes.sql`
 
 执行后：
@@ -130,7 +148,7 @@ npm test
 
 ## Schema migrations（避免漏跑SQL）
 
-- 查看当前版本：GET `/api/admin/migrate`
-- 应用迁移（需要 `x-edit-key`）：POST `/api/admin/migrate`
+- 查看当前版本（需要管理员口令）：GET `/api/admin/migrate`
+- 应用迁移（需要管理员口令）：POST `/api/admin/migrate`
 
 建议每次部署后先执行一次 POST，确保 D1 schema/索引/FTS 同步。

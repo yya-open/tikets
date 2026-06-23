@@ -1,4 +1,4 @@
-import { requireEditKey } from "../../_lib/auth.js";
+import { requireAdminKey } from "../../_lib/auth.js";
 import { jsonResponse } from "../../_lib/http.js";
 
 /**
@@ -6,7 +6,7 @@ import { jsonResponse } from "../../_lib/http.js";
  * Rebuild FTS index (admin, requires X-EDIT-KEY).
  */
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
   try {
@@ -18,7 +18,7 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
   try {

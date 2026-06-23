@@ -55,7 +55,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   let body;

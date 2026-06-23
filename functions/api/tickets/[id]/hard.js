@@ -10,7 +10,7 @@ function parseId(raw) {
 }
 
 export async function onRequestDelete({ params, request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   const id = parseId(params.id);

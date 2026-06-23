@@ -13,7 +13,7 @@ async function tryRebuildFTS(env) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   let payload;
@@ -52,22 +52,29 @@ export async function onRequestPost({ request, env }) {
      WHERE id=?`
   );
 
-  const statements = [];
+  const updateIds = new Set(details.updates.map((item) => item.id));
+  let applied = 0;
+  let statements = [];
+  async function flushBatch() {
+    if (!statements.length) return;
+    await env.DB.batch(statements);
+    applied += statements.length;
+    statements = [];
+  }
+
   for (const row of normalized.all) {
     if (!row.date || !row.issue) continue;
     const existing = Number.isFinite(row.id) ? existingMap.get(row.id) : null;
     if (!existing) {
       statements.push(insertStmt.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs));
     } else {
-      const shouldUpdate = details.updates.some((item) => item.id === row.id);
-      if (!shouldUpdate) continue;
+      if (!updateIds.has(row.id)) continue;
       statements.push(updateStmt.bind(row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs, row.id));
     }
+    if (statements.length >= 100) await flushBatch();
   }
 
-  if (statements.length > 0) {
-    await env.DB.batch(statements);
-  }
+  await flushBatch();
   const fts = await tryRebuildFTS(env);
-  return jsonResponse({ ok: true, totals, applied: statements.length, fts }, { headers: { "cache-control": "no-store" } });
+  return jsonResponse({ ok: true, totals, applied, fts }, { headers: { "cache-control": "no-store" } });
 }

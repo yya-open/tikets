@@ -1,4 +1,4 @@
-import { requireEditKey } from "../_lib/auth.js";
+import { requireAdminKey } from "../_lib/auth.js";
 import { jsonResponse } from "../_lib/http.js";
 import { normalizeImportPayload, parseImportPayload } from "../_lib/import_common.js";
 
@@ -9,7 +9,7 @@ async function tryRebuildFTS(env) {
 }
 
 export async function onRequestPut({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
   let payload;
@@ -17,6 +17,19 @@ export async function onRequestPut({ request, env }) {
     payload = await request.json();
   } catch {
     return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
+  }
+
+  const confirmation = String(payload?.confirm || payload?.confirmation || "").trim();
+  if (confirmation !== "REPLACE_ALL_TICKETS") {
+    return jsonResponse(
+      {
+        ok: false,
+        error: "confirmation_required",
+        code: "confirmation_required",
+        message: "Set confirm to REPLACE_ALL_TICKETS to replace all cloud tickets.",
+      },
+      { status: 400, headers: { "cache-control": "no-store" } }
+    );
   }
 
   const parsed = parseImportPayload(payload);

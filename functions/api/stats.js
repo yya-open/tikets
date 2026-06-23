@@ -8,6 +8,7 @@ import {
   pushKeywordLikeFilter,
   pushTicketFilters,
 } from "../_lib/ticket_query.js";
+import { isPublicCacheableGet, jsonResponse, respondCachedJson } from "../_lib/http.js";
 
 /**
  * GET /api/stats
@@ -30,46 +31,6 @@ import {
  *
  * D1 binding name: DB
  */
-
-function jsonResponse(data, { status = 200, headers = {} } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=UTF-8",
-      "cache-control": "no-store",
-      ...headers,
-    },
-  });
-}
-
-async function sha256Hex(input) {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));
-  const bytes = new Uint8Array(buf);
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, "0");
-  }
-  return hex;
-}
-
-async function respondCachedJson(request, payload, { maxAge = 60, status = 200 } = {}) {
-  const body = JSON.stringify(payload);
-  const etag = `W/"${await sha256Hex(body)}"`;
-
-  const headers = {
-    "content-type": "application/json; charset=UTF-8",
-    "cache-control": `public, max-age=${Math.max(0, Math.trunc(maxAge))}`,
-    etag,
-    vary: "accept-encoding",
-  };
-
-  const inm = request.headers.get("if-none-match") || request.headers.get("If-None-Match") || "";
-  if (inm === etag) {
-    return new Response(null, { status: 304, headers });
-  }
-  return new Response(body, { status, headers });
-}
 
 async function handleGet({ request, env }) {
   const url = new URL(request.url);
@@ -281,18 +242,10 @@ async function handleGet({ request, env }) {
   }
 }
 
-function isCacheableGet(request) {
-  // Only cache public read requests (no edit key)
-  if ((request.method || "GET").toUpperCase() !== "GET") return false;
-  const k = request.headers.get("x-edit-key") || request.headers.get("X-EDIT-KEY");
-  if (k && String(k).trim()) return false;
-  return true;
-}
-
 export async function onRequestGet(ctx) {
   const request = ctx.request;
   const env = ctx.env;
-  if (!isCacheableGet(request)) {
+  if (!isPublicCacheableGet(request)) {
     return await handleGet({ request, env });
   }
 

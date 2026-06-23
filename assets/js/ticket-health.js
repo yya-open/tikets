@@ -1,6 +1,11 @@
 (function () {
   async function load() {
-    const res = await fetch('/api/health', { cache: 'no-store' });
+    const headers = new Headers({ 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
+    const key = (window.TicketAuth && typeof window.TicketAuth.get === 'function')
+      ? window.TicketAuth.get()
+      : (typeof window.getEditKey === 'function' ? window.getEditKey() : '');
+    if (key) headers.set('X-EDIT-KEY', key);
+    const res = await fetch('/api/health', { cache: 'no-store', headers });
     if (!res.ok) throw new Error(`health failed: ${res.status}`);
     return await res.json();
   }

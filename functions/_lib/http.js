@@ -8,6 +8,29 @@ export function jsonResponse(data, { status = 200, headers = {} } = {}) {
   });
 }
 
+export function requestWantsFresh(request) {
+  const url = new URL(request.url);
+  const fresh = String(url.searchParams.get("fresh") || url.searchParams.get("_fresh") || "").toLowerCase();
+  if (["1", "true", "yes"].includes(fresh)) return true;
+
+  const cacheControl = String(request.headers.get("cache-control") || "").toLowerCase();
+  const pragma = String(request.headers.get("pragma") || "").toLowerCase();
+  return (
+    cacheControl.includes("no-cache") ||
+    cacheControl.includes("no-store") ||
+    cacheControl.includes("max-age=0") ||
+    pragma.includes("no-cache")
+  );
+}
+
+export function isPublicCacheableGet(request) {
+  if ((request.method || "GET").toUpperCase() !== "GET") return false;
+  const editKey = request.headers.get("x-edit-key") || request.headers.get("X-EDIT-KEY");
+  const adminKey = request.headers.get("x-admin-key") || request.headers.get("X-ADMIN-KEY");
+  if (String(editKey || "").trim() || String(adminKey || "").trim()) return false;
+  return !requestWantsFresh(request);
+}
+
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(input)));

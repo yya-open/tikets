@@ -3,7 +3,7 @@ import { jsonResponse } from "../../_lib/http.js";
 import { diffImport, fetchExistingMap, normalizeImportPayload, parseImportPayload, pickExamples, summarizeDiff, summarizeImport } from "../../_lib/import_common.js";
 
 export async function onRequestPost({ request, env }) {
-  const auth = requireEditKey(request, env);
+  const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   let payload;

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
+import { requireAdminKey, requireEditKey } from "../functions/_lib/auth.js";
+import { isPublicCacheableGet } from "../functions/_lib/http.js";
 import {
   buildDeletedFilter,
   buildFtsQuery,
@@ -13,6 +16,7 @@ import {
 import { diffImport, normalizeImportPayload, parseImportPayload } from "../functions/_lib/import_common.js";
 import { splitSqlStatements } from "../functions/_lib/schema_migrate.js";
 import { validateTicketPayload } from "../functions/_lib/validation.js";
+import { onRequestPut as replaceImport } from "../functions/api/import.js";
 
 test("ticket query helpers normalize filters and build ticket predicates", () => {
   assert.equal(normalizeDateParam("2026-05-10"), "2026-05-10");
@@ -118,4 +122,77 @@ test("SQL splitter keeps trigger bodies intact", () => {
   assert.match(statements[1], /CREATE TRIGGER/);
   assert.match(statements[1], /UPDATE tickets SET id = id;/);
   assert.match(statements[2], /CREATE INDEX/);
+});
+
+test("main page loads ticket filters before query runtime", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const filtersIndex = html.indexOf("/assets/js/ticket-filters.js");
+  const runtimeIndex = html.indexOf("/assets/js/ticket-query-runtime.js");
+  assert.ok(filtersIndex > -1, "ticket-filters.js should be loaded by index.html");
+  assert.ok(runtimeIndex > -1, "ticket-query-runtime.js should be loaded by index.html");
+  assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
+});
+
+test("public API cache helper honors fresh requests and auth headers", () => {
+  assert.equal(isPublicCacheableGet(new Request("https://example.test/api/tickets")), true);
+  assert.equal(isPublicCacheableGet(new Request("https://example.test/api/tickets?fresh=1")), false);
+  assert.equal(
+    isPublicCacheableGet(new Request("https://example.test/api/tickets", { headers: { "Cache-Control": "no-cache" } })),
+    false
+  );
+  assert.equal(
+    isPublicCacheableGet(new Request("https://example.test/api/tickets", { headers: { Pragma: "no-cache" } })),
+    false
+  );
+  assert.equal(
+    isPublicCacheableGet(new Request("https://example.test/api/tickets", { headers: { "X-EDIT-KEY": "secret" } })),
+    false
+  );
+  assert.equal(
+    isPublicCacheableGet(new Request("https://example.test/api/tickets", { method: "POST" })),
+    false
+  );
+});
+
+test("edit and admin keys are validated with admin as write superset", async () => {
+  const env = { EDIT_KEY: "edit-secret", ADMIN_KEY: "admin-secret" };
+
+  assert.equal(
+    await requireEditKey(new Request("https://example.test/api/tickets", { headers: { "X-EDIT-KEY": "edit-secret" } }), env),
+    null
+  );
+  assert.equal(
+    await requireEditKey(new Request("https://example.test/api/tickets", { headers: { "X-EDIT-KEY": "admin-secret" } }), env),
+    null
+  );
+  assert.equal(
+    await requireAdminKey(new Request("https://example.test/api/admin/migrate", { headers: { "X-ADMIN-KEY": "admin-secret" } }), env),
+    null
+  );
+
+  const deniedAdmin = await requireAdminKey(
+    new Request("https://example.test/api/admin/migrate", { headers: { "X-EDIT-KEY": "edit-secret" } }),
+    env
+  );
+  assert.equal(deniedAdmin.status, 403);
+
+  assert.equal(
+    await requireAdminKey(
+      new Request("https://example.test/api/admin/migrate", { headers: { "X-EDIT-KEY": "edit-secret" } }),
+      { EDIT_KEY: "edit-secret" }
+    ),
+    null
+  );
+});
+
+test("replace-all import requires explicit confirmation", async () => {
+  const request = new Request("https://example.test/api/import", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-ADMIN-KEY": "admin-secret" },
+    body: JSON.stringify({ active: [] }),
+  });
+  const res = await replaceImport({ request, env: { ADMIN_KEY: "admin-secret" } });
+  const data = await res.json();
+  assert.equal(res.status, 400);
+  assert.equal(data.code, "confirmation_required");
 });

@@ -1,3 +1,4 @@
+import { requireAdminKey } from "../_lib/auth.js";
 import { jsonResponse } from "../_lib/http.js";
 import { getCurrentSchemaVersion, latestSchemaVersion } from "../_lib/schema_migrate.js";
 
@@ -6,7 +7,10 @@ async function tableExists(db, name) {
   return Boolean(row?.name);
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
+  const auth = await requireAdminKey(request, env);
+  if (auth) return auth;
+
   try {
     const ticketCount = await env.DB.prepare("SELECT COUNT(*) AS c FROM tickets").first();
     const deletedCount = await env.DB.prepare("SELECT COUNT(*) AS c FROM tickets WHERE is_deleted=1").first().catch(() => ({ c: 0 }));
