@@ -1,27 +1,33 @@
+    /* Theme tokens */
     :root {
       color-scheme: light;
-      --bg: #f3f5f8;
-      --bg-accent: #eef2f7;
-      --surface: #ffffff;
+      --bg: #f4f6fa;
+      --bg-accent: #eef3f9;
+      --surface: rgba(255,255,255,0.96);
       --surface-soft: #f8fafc;
       --surface-muted: #f6f8fb;
-      --text: #1f2937;
+      --text: #172033;
       --muted: #667085;
-      --border: #d7dee7;
-      --border-strong: #c7d0db;
-      --primary: #2563eb;
-      --primary-strong: #1d4ed8;
-      --primary-soft: #eff6ff;
-      --shadow-lg: 0 18px 40px rgba(15, 23, 42, 0.06);
-      --shadow-md: 0 8px 20px rgba(15, 23, 42, 0.05);
-      --ring: 0 0 0 3px rgba(37, 99, 235, 0.16);
+      --border: #d9e0ea;
+      --border-strong: #c3ccda;
+      --primary: #2457e8;
+      --primary-strong: #1f49c7;
+      --primary-soft: #edf3ff;
+      --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.08);
+      --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.06);
+      --ring: 0 0 0 4px rgba(36, 87, 232, 0.14);
     }
+
+    /* Base layout */
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
       padding: 24px 20px 40px;
-      background: linear-gradient(180deg, #f7f8fa 0%, var(--bg) 100%);
+      background:
+        radial-gradient(circle at top left, rgba(36, 87, 232, 0.08), transparent 32%),
+        radial-gradient(circle at top right, rgba(45, 212, 191, 0.06), transparent 28%),
+        linear-gradient(180deg, #f8faff 0%, #f3f6fb 46%, #eef2f7 100%);
       color: var(--text);
       -webkit-tap-highlight-color: rgba(22, 119, 255, 0.14);
     }
@@ -1034,32 +1040,6 @@ textarea.is-invalid{
     flex-direction: column;
     align-items: stretch;
   }
-}
-
-:root {
-  --bg: #f4f6fa;
-  --bg-accent: #eef3f9;
-  --surface: rgba(255,255,255,0.96);
-  --surface-soft: #f8fafc;
-  --surface-muted: #f6f8fb;
-  --text: #172033;
-  --muted: #667085;
-  --border: #d9e0ea;
-  --border-strong: #c3ccda;
-  --primary: #2457e8;
-  --primary-strong: #1f49c7;
-  --primary-soft: #edf3ff;
-  --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.06);
-  --ring: 0 0 0 4px rgba(36, 87, 232, 0.14);
-}
-
-body {
-  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(36, 87, 232, 0.08), transparent 32%),
-    radial-gradient(circle at top right, rgba(45, 212, 191, 0.06), transparent 28%),
-    linear-gradient(180deg, #f8faff 0%, #f3f6fb 46%, #eef2f7 100%);
 }
 
 .page-header {

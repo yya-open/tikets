@@ -134,24 +134,54 @@ test("main page loads ticket filters before query runtime", () => {
   assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
 });
 
+test("pages load auth and api through the ES module core entry", () => {
+  const pages = ["../index.html", "../admin.html"].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
+
+  for (const html of pages) {
+    const coreIndex = html.indexOf("/assets/js/ticket-core.entry.js");
+    const sessionIndex = html.indexOf("/assets/js/ticket-session.js");
+    assert.ok(coreIndex > -1, "core module entry should be loaded");
+    assert.match(html, /<script\s+type="module"\s+src="\/assets\/js\/ticket-core\.entry\.js"><\/script>/);
+    assert.ok(sessionIndex > -1, "ticket-session.js should still be loaded");
+    assert.ok(coreIndex < sessionIndex, "core module should be declared before session-dependent scripts");
+    assert.equal(html.includes("/assets/js/ticket-auth.js"), false);
+    assert.equal(html.includes("/assets/js/ticket-api.js"), false);
+  }
+});
+
 test("pages keep scripts and styles externalized for CSP", () => {
   const pages = ["../index.html", "../admin.html"].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
   const headers = readFileSync(new URL("../_headers", import.meta.url), "utf8");
+  const mainPage = pages[0];
 
   for (const html of pages) {
     assert.equal(/<style\b/i.test(html), false);
     assert.equal(/\sstyle=/i.test(html), false);
     assert.equal(/\son(?:click|change|submit|keydown)=/i.test(html), false);
     assert.equal(/javascript:/i.test(html), false);
+    assert.equal(html.includes("cdn.jsdelivr.net"), false);
 
     for (const match of html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)/g)) {
       assert.equal(existsSync(new URL(`..${match[1]}`, import.meta.url)), true, `${match[1]} should exist`);
     }
   }
 
-  assert.match(headers, /script-src 'self' https:\/\/cdn\.jsdelivr\.net/);
+  for (const vendorPath of [
+    "/assets/vendor/xlsx.full.min.js",
+    "/assets/vendor/jszip.min.js",
+    "/assets/vendor/chart.umd.min.js",
+    "/assets/vendor/chartjs-plugin-datalabels.min.js",
+  ]) {
+    assert.ok(mainPage.includes(vendorPath), `${vendorPath} should be loaded locally`);
+    assert.equal(existsSync(new URL(`..${vendorPath}`, import.meta.url)), true, `${vendorPath} should exist`);
+  }
+
+  assert.match(headers, /script-src 'self'(?:;|$)/);
   assert.match(headers, /style-src 'self'(?:;|$)/);
   assert.equal(headers.includes("'unsafe-inline'"), false);
+  assert.equal(headers.includes("cdn.jsdelivr.net"), false);
+  assert.match(headers, /\/assets\/\*\s+Cache-Control: public, max-age=3600/s);
+  assert.match(headers, /\/assets\/vendor\/\*\s+Cache-Control: public, max-age=31536000, immutable/s);
 });
 
 test("public API cache helper honors fresh requests and auth headers", () => {
