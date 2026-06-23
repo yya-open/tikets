@@ -2,7 +2,7 @@
 
 ## Current Cleanup
 
-- Unified write authentication through `functions/_lib/auth.js`; write endpoints now accept `X-EDIT-KEY` only.
+- Unified write/admin authentication through `functions/_lib/auth.js`; write endpoints accept `X-EDIT-KEY`, while admin endpoints prefer `ADMIN_KEY` and fall back to `EDIT_KEY` when no admin key is configured.
 - Added backend support for the frontend `department`, `name`, and `status` filters on both `/api/tickets` and `/api/stats`.
 - Qualified ticket columns in FTS-backed queries to avoid ambiguity when filtering by `type`.
 - Fixed keyword searches with cursor params so keyword mode falls back to offset pagination cleanly.

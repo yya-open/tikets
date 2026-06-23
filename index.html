@@ -7,33 +7,33 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <meta content="#f4f7fb" name="theme-color"/>
 <title>工单记录系统</title>
-<!-- 外部库：Excel 导出、ZIP 打包、统计图表 -->
+<!-- 固定版本外部库：Excel 导出、ZIP 打包、统计图表 -->
 <link href="https://cdn.jsdelivr.net" rel="preconnect"/>
 <link crossorigin="" href="https://cdn.jsdelivr.net" rel="preconnect"/>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-<script src="/assets/js/ticket-config.js"></script>
-<script src="/assets/js/ticket-auth.js"></script>
-<script src="/assets/js/ticket-state.js"></script>
-<script src="/assets/js/ticket-filters.js"></script>
-<script src="/assets/js/ticket-utils.js"></script>
-<script src="/assets/js/ticket-validation.js"></script>
-<script src="/assets/js/ticket-import-preview.js"></script>
-<script src="/assets/js/ticket-dialogs.js"></script>
-<script src="/assets/js/ticket-api.js"></script>
-<script src="/assets/js/ticket-session.js"></script>
-<script src="/assets/js/ticket-service.js"></script>
-<script src="/assets/js/ticket-dictionary.js"></script>
-<script src="/assets/js/ticket-query-runtime.js"></script>
-<script src="/assets/js/ticket-form-modal.js"></script>
-<script src="/assets/js/ticket-export-tools.js"></script>
-<script src="/assets/app.js"></script>
-<script src="/assets/js/ticket-table-view.js"></script>
-<script src="/assets/js/ticket-stats-view.js"></script>
-<script src="/assets/js/ticket-fold-state.js"></script>
-<script src="/assets/js/ticket-bindings.js"></script>
+<script defer crossorigin="anonymous" referrerpolicy="no-referrer" src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer crossorigin="anonymous" referrerpolicy="no-referrer" src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script defer crossorigin="anonymous" referrerpolicy="no-referrer" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer crossorigin="anonymous" referrerpolicy="no-referrer" src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script defer src="/assets/js/ticket-config.js"></script>
+<script defer src="/assets/js/ticket-auth.js"></script>
+<script defer src="/assets/js/ticket-state.js"></script>
+<script defer src="/assets/js/ticket-filters.js"></script>
+<script defer src="/assets/js/ticket-utils.js"></script>
+<script defer src="/assets/js/ticket-validation.js"></script>
+<script defer src="/assets/js/ticket-import-preview.js"></script>
+<script defer src="/assets/js/ticket-dialogs.js"></script>
+<script defer src="/assets/js/ticket-api.js"></script>
+<script defer src="/assets/js/ticket-session.js"></script>
+<script defer src="/assets/js/ticket-service.js"></script>
+<script defer src="/assets/js/ticket-dictionary.js"></script>
+<script defer src="/assets/js/ticket-query-runtime.js"></script>
+<script defer src="/assets/js/ticket-form-modal.js"></script>
+<script defer src="/assets/js/ticket-export-tools.js"></script>
+<script defer src="/assets/app.js"></script>
+<script defer src="/assets/js/ticket-table-view.js"></script>
+<script defer src="/assets/js/ticket-stats-view.js"></script>
+<script defer src="/assets/js/ticket-fold-state.js"></script>
+<script defer src="/assets/js/ticket-bindings.js"></script>
 <link rel="stylesheet" href="/assets/app.css"/>
 
 </head>
@@ -54,7 +54,7 @@
 <section class="card section-toolbar" aria-labelledby="workbenchTitle">
 <div class="section-toolbar-head">
 <div>
-<h2 id="workbenchTitle" style="margin:0;">工单操作</h2>
+<h2 class="u-m0" id="workbenchTitle">工单操作</h2>
 <div class="muted section-toolbar-desc">从这里开始新增工单、进入管理页，或继续处理当前工作。</div>
 </div>
 <div class="section-toolbar-actions">
@@ -78,7 +78,7 @@
 </summary>
 <div class="fold-body">
 <!-- 常规模糊筛选 -->
-<details class="settings-item" style="margin-top:0;" data-fold-key="filters-advanced">
+<details class="settings-item u-mt0" data-fold-key="filters-advanced">
 <summary class="settings-summary">
 <div class="settings-left">
 <div class="settings-title-row"><div class="settings-title">高级筛选</div></div>
@@ -121,12 +121,12 @@
 <button class="primary" id="btnApplyFilters" type="button">应用筛选</button>
 <button id="btnClearFilters" type="button">清空筛选</button>
 <button class="secondary" id="trashToggleBtn" type="button">回收站</button>
-<span id="viewModePill" class="pill" style="margin-left:6px;">工单</span>
+<span id="viewModePill" class="pill view-mode-pill">工单</span>
 </div>
 </div>
 </details>
 <!-- 导出 / 备份操作 -->
-<details class="settings-item" style="margin-top:12px;" data-fold-key="export-backup-actions">
+<details class="settings-item settings-item-spaced" data-fold-key="export-backup-actions">
 <summary class="settings-summary">
 <div class="settings-left">
 <div class="settings-title-row"><div class="settings-title">导出 / 备份操作</div></div>
@@ -141,7 +141,7 @@
 <button id="btnExportSummaryExcel">导出统计汇总 Excel</button>
 <button id="btnExportExcelByMonth">按月份分 Sheet 导出 Excel</button>
 <button id="btnBackupData">导出 JSON 备份</button>
-<label style="font-size:13px; margin-left:4px;">
+<label class="backup-load-label">
           载入备份：
           <input accept="application/json" id="backupFileInput" type="file"/>
 </label>
@@ -149,12 +149,12 @@
 <button id="btnExportYearZip">打包年度 ZIP（全部月份 JSON）</button>
 </div>
 <!-- 手动目录备份（点击时选择目录并导出 JSON） -->
-<div style="margin-top:8px;font-size:13px;">
+<div class="backup-directory-row">
 <button id="btnManualBackup">导出到本地目录</button>
 </div>
 </div>
 </details>
-<div aria-live="polite" id="stats" style="margin-top:10px;font-size:14px;"></div>
+<div aria-live="polite" class="stats-inline" id="stats"></div>
 </div>
 </details>
 <!-- 工单列表 + 图表区域 -->
@@ -239,7 +239,7 @@
 </div>
 <div class="stats-grid" id="statsCards"></div>
 <!-- 类型饼图 + 自定义图例 -->
-<div class="chart-surface" style="margin-top:14px;">
+<div class="chart-surface chart-surface-spaced">
 <div class="chart-title">当前视图 - 故障类型分布</div>
 <div class="chart-pie-wrap">
 <div class="chart-container pie-canvas">
@@ -249,7 +249,7 @@
 </div>
 </div>
 <!-- 月份柱状图 -->
-<div class="chart-surface" style="margin-top:14px;">
+<div class="chart-surface chart-surface-spaced">
 <div class="chart-title">当前视图 - 各月份工单数量</div>
 <div class="chart-container">
 <canvas id="monthBarChart"></canvas>
@@ -335,18 +335,18 @@
 </div>
 </div>
 
-<!-- 写入口令设置（更正式 UI） -->
+<!-- 写入/管理员口令设置 -->
 <div class="ticket-modal-mask" id="keyModal">
   <div class="ticket-modal-panel key-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
     <div class="ticket-modal-header">
-      <div style="font-weight:700;font-size:18px;" id="keyModalTitle">写入口令设置</div>
+      <div class="modal-title-inline" id="keyModalTitle">写入/管理员口令设置</div>
       <button aria-label="关闭口令设置" type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
     </div>
 
     <div class="key-form">
       <div class="key-row">
-        <label for="editKeyInput"><b>写入口令</b></label>
-        <input id="editKeyInput" class="key-input" name="editKeyInput" type="password" autocomplete="off" placeholder="输入共享口令（用于新增 / 编辑 / 删除 / 导入）" />
+        <label for="editKeyInput"><b>写入/管理员口令</b></label>
+        <input id="editKeyInput" class="key-input" name="editKeyInput" type="password" autocomplete="off" placeholder="输入写入口令；管理员操作请输入管理员口令" />
       </div>
 
       <div class="key-row">
@@ -356,9 +356,9 @@
 
       <div class="key-help">
         <div>• 上次设置：<b><span id="editKeySetAt2">-</span></b></div>
-        <div>• 读取（GET）公开；写入（POST/PUT/DELETE/导入覆盖云端）需要口令。</div>
+        <div>• 写入操作需要写入口令；迁移、自检、FTS 重建、整库覆盖导入需要管理员口令。</div>
         <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，关闭标签页后需要重新输入。</div>
-        <div>• 如果口令输入错误，写操作会返回 401，并提示你重新设置。</div>
+        <div>• 如果口令输入错误，接口会返回 403，并提示你重新设置。</div>
       </div>
 
       <div class="key-actions">
@@ -370,7 +370,7 @@
     </div>
   </div>
 </div>
-<script src="/assets/js/ticket-main-bootstrap.js"></script>
+<script defer src="/assets/js/ticket-main-bootstrap.js"></script>
 <!-- Toast 提示 -->
 <div aria-atomic="true" aria-live="polite" class="toast-container" id="toastContainer"></div>
 <!-- 通用弹窗（替代 alert/confirm） -->

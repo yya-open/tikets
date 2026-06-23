@@ -33,7 +33,7 @@ async function toggleTrashView() {
   await reloadAndRender({ showLoadedToast: true });
 }
 
-// ===== 写入口令（仅保护写操作） =====
+// ===== 写入/管理员口令（保护写操作与管理操作） =====
 const EDIT_KEY_STORAGE = "ticket_edit_key";
 const EDIT_KEY_SET_AT_STORAGE = "ticket_edit_key_set_at";
 
@@ -134,14 +134,14 @@ function saveEditKeyFromUI() {
     clearEditKeySetAt();
     updateEditKeyStatus();
     resolveEditKeyWaiters("");
-    if (typeof showToast === "function") showToast("已清除写入口令。", "success");
+    if (typeof showToast === "function") showToast("已清除口令。", "success");
     return;
   }
   setEditKey(key);
   setEditKeySetAtNow();
   updateEditKeyStatus();
   resolveEditKeyWaiters(key);
-  if (typeof showToast === "function") showToast("写入口令已保存（当前浏览器会话内有效）。", "success");
+  if (typeof showToast === "function") showToast("口令已保存（当前浏览器会话内有效）。", "success");
 }
 
 function clearEditKeyFromUI() {
@@ -151,14 +151,14 @@ function clearEditKeyFromUI() {
   if (input) input.value = "";
   updateEditKeyStatus();
   resolveEditKeyWaiters("");
-  if (typeof showToast === "function") showToast("已清除写入口令。", "success");
+  if (typeof showToast === "function") showToast("已清除口令。", "success");
 }
 
 async function ensureEditKey() {
   const existing = getEditKey();
   if (existing) return existing;
   openKeyModal();
-  if (typeof showToast === "function") showToast("请先设置写入口令后再执行写操作。", "warning");
+  if (typeof showToast === "function") showToast("请先设置写入/管理员口令后再继续。", "warning");
   return await new Promise((resolve) => {
     __editKeyWaiters.push(resolve);
   });
@@ -168,7 +168,7 @@ async function testEditKey() {
   const key = getEditKey();
   if (!key) {
     openKeyModal();
-    if (typeof showToast === "function") showToast("请先设置写入口令，再进行测试。", "warning");
+    if (typeof showToast === "function") showToast("请先设置写入/管理员口令，再进行测试。", "warning");
     return;
   }
   try {
@@ -186,7 +186,7 @@ async function testEditKey() {
       if (typeof showToast === "function") showToast(`口令错误（${res.status}），请重新设置。`, "error");
       openKeyModal();
     } else if (res.status === 500) {
-      if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY（500）。", "error");
+      if (typeof showToast === "function") showToast("服务端未配置 EDIT_KEY 或 ADMIN_KEY（500）。", "error");
     } else {
       if (typeof showToast === "function") showToast(`测试失败：${res.status}`, "error");
     }

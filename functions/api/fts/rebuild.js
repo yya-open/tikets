@@ -3,7 +3,7 @@ import { jsonResponse } from "../../_lib/http.js";
 
 /**
  * POST /api/fts/rebuild
- * Rebuild FTS index (admin, requires X-EDIT-KEY).
+ * Rebuild FTS index (admin, requires ADMIN_KEY or EDIT_KEY fallback).
  */
 export async function onRequestPost({ request, env }) {
   const auth = await requireAdminKey(request, env);

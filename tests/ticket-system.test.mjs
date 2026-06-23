@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { requireAdminKey, requireEditKey } from "../functions/_lib/auth.js";
 import { isPublicCacheableGet } from "../functions/_lib/http.js";
@@ -16,6 +16,7 @@ import {
 import { diffImport, normalizeImportPayload, parseImportPayload } from "../functions/_lib/import_common.js";
 import { splitSqlStatements } from "../functions/_lib/schema_migrate.js";
 import { validateTicketPayload } from "../functions/_lib/validation.js";
+import { onRequestGet as authTest } from "../functions/api/auth-test.js";
 import { onRequestPut as replaceImport } from "../functions/api/import.js";
 
 test("ticket query helpers normalize filters and build ticket predicates", () => {
@@ -133,6 +134,26 @@ test("main page loads ticket filters before query runtime", () => {
   assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
 });
 
+test("pages keep scripts and styles externalized for CSP", () => {
+  const pages = ["../index.html", "../admin.html"].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
+  const headers = readFileSync(new URL("../_headers", import.meta.url), "utf8");
+
+  for (const html of pages) {
+    assert.equal(/<style\b/i.test(html), false);
+    assert.equal(/\sstyle=/i.test(html), false);
+    assert.equal(/\son(?:click|change|submit|keydown)=/i.test(html), false);
+    assert.equal(/javascript:/i.test(html), false);
+
+    for (const match of html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)/g)) {
+      assert.equal(existsSync(new URL(`..${match[1]}`, import.meta.url)), true, `${match[1]} should exist`);
+    }
+  }
+
+  assert.match(headers, /script-src 'self' https:\/\/cdn\.jsdelivr\.net/);
+  assert.match(headers, /style-src 'self'(?:;|$)/);
+  assert.equal(headers.includes("'unsafe-inline'"), false);
+});
+
 test("public API cache helper honors fresh requests and auth headers", () => {
   assert.equal(isPublicCacheableGet(new Request("https://example.test/api/tickets")), true);
   assert.equal(isPublicCacheableGet(new Request("https://example.test/api/tickets?fresh=1")), false);
@@ -183,6 +204,30 @@ test("edit and admin keys are validated with admin as write superset", async () 
     ),
     null
   );
+});
+
+test("auth-test admin scope requires admin credentials when configured", async () => {
+  const env = { EDIT_KEY: "edit-secret", ADMIN_KEY: "admin-secret" };
+
+  const editRes = await authTest({
+    request: new Request("https://example.test/api/auth-test", { headers: { "X-EDIT-KEY": "edit-secret" } }),
+    env,
+  });
+  assert.equal(editRes.status, 200);
+  assert.equal((await editRes.json()).scope, "edit");
+
+  const deniedAdmin = await authTest({
+    request: new Request("https://example.test/api/auth-test?scope=admin", { headers: { "X-EDIT-KEY": "edit-secret" } }),
+    env,
+  });
+  assert.equal(deniedAdmin.status, 403);
+
+  const adminRes = await authTest({
+    request: new Request("https://example.test/api/auth-test?scope=admin", { headers: { "X-ADMIN-KEY": "admin-secret" } }),
+    env,
+  });
+  assert.equal(adminRes.status, 200);
+  assert.equal((await adminRes.json()).scope, "admin");
 });
 
 test("replace-all import requires explicit confirmation", async () => {

@@ -38,12 +38,29 @@
       }
 
       // ===== 颜色生成 =====
+      const chartPalette = [
+        "hsl(210 75% 55%)",
+        "hsl(177 70% 42%)",
+        "hsl(36 88% 56%)",
+        "hsl(349 76% 58%)",
+        "hsl(262 70% 62%)",
+        "hsl(145 58% 42%)",
+        "hsl(14 82% 58%)",
+        "hsl(224 64% 48%)",
+        "hsl(314 62% 56%)",
+        "hsl(88 52% 42%)",
+        "hsl(194 72% 45%)",
+        "hsl(46 88% 46%)",
+        "hsl(285 58% 52%)",
+        "hsl(165 56% 36%)",
+        "hsl(4 70% 54%)",
+        "hsl(240 54% 56%)",
+      ];
+
       function genColors(n) {
         const out = [];
-        const base = 210; // 蓝系起点
         for (let i = 0; i < n; i++) {
-          const hue = (base + i * (360 / Math.max(1, n))) % 360;
-          out.push(`hsl(${hue} 75% 55%)`);
+          out.push(chartPalette[i % chartPalette.length]);
         }
         return out;
       }
@@ -52,25 +69,44 @@
       function renderLegend(labels, values, colors) {
         const legend = document.getElementById("typeLegend");
         if (!legend) return;
+        legend.textContent = "";
         if (!labels.length) {
-          legend.innerHTML = `<div class="muted">暂无数据</div>`;
+          const empty = document.createElement("div");
+          empty.className = "muted";
+          empty.textContent = "暂无数据";
+          legend.appendChild(empty);
           return;
         }
         const sum = values.reduce((a,b) => a + b, 0) || 1;
-        legend.innerHTML = labels.map((name, idx) => {
+        labels.forEach((name, idx) => {
           const v = values[idx] || 0;
           const pct = Math.round((v / sum) * 1000) / 10; // 1 位小数
-          return `
-            <div class="legend-item" title="${escapeHtml(name)}">
-              <span class="legend-swatch" style="background:${colors[idx]};"></span>
-              <span class="legend-name">${escapeHtml(name)}</span>
-              <span class="legend-meta">
-                <span class="legend-count">${v}</span>
-                <span class="legend-pct">${pct}%</span>
-              </span>
-            </div>
-          `;
-        }).join("");
+          const item = document.createElement("div");
+          item.className = "legend-item";
+          item.title = String(name || "");
+
+          const swatch = document.createElement("span");
+          swatch.className = `legend-swatch legend-color-${idx % chartPalette.length}`;
+
+          const label = document.createElement("span");
+          label.className = "legend-name";
+          label.textContent = String(name || "");
+
+          const meta = document.createElement("span");
+          meta.className = "legend-meta";
+
+          const count = document.createElement("span");
+          count.className = "legend-count";
+          count.textContent = String(v);
+
+          const pctEl = document.createElement("span");
+          pctEl.className = "legend-pct";
+          pctEl.textContent = `${pct}%`;
+
+          meta.append(count, pctEl);
+          item.append(swatch, label, meta);
+          legend.appendChild(item);
+        });
       }
 
       // ===== 饼图（类型分布）=====

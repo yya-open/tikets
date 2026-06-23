@@ -47,13 +47,13 @@
           window.TicketAuth.clearSetAt && window.TicketAuth.clearSetAt();
         }
         if (typeof window.updateEditKeyStatus === 'function') window.updateEditKeyStatus();
-        if (typeof window.showToast === 'function' && needAuth) window.showToast('写入口令错误，请重新输入。', 'error');
+        if (typeof window.showToast === 'function' && needAuth) window.showToast('口令错误，请重新输入。', 'error');
       }
     } else if (res.status === 500) {
       try {
         const text = await res.clone().text();
         if (/EDIT_KEY|misconfigured/i.test(text) && typeof window.showToast === 'function') {
-          window.showToast('服务端未配置 EDIT_KEY。', 'error');
+          window.showToast('服务端未配置 EDIT_KEY 或 ADMIN_KEY。', 'error');
         }
       } catch {}
     }

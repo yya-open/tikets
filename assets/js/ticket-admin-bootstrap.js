@@ -21,9 +21,9 @@
 
   async function validateAdminKey(key) {
     if (!key) return false;
-    const res = await fetch("/api/auth-test", {
+    const res = await fetch("/api/auth-test?scope=admin", {
       method: "GET",
-      headers: { "X-EDIT-KEY": key },
+      headers: { "X-ADMIN-KEY": key },
       cache: "no-store",
     });
     return res.ok;

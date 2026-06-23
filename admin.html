@@ -6,18 +6,18 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <meta content="#f4f7fb" name="theme-color"/>
 <title>管理员页面 - 工单记录系统</title>
-<script src="/assets/js/ticket-config.js"></script>
-<script src="/assets/js/ticket-auth.js"></script>
-<script src="/assets/js/ticket-utils.js"></script>
-<script src="/assets/js/ticket-health.js"></script>
-<script src="/assets/js/ticket-dialogs.js"></script>
-<script src="/assets/js/ticket-api.js"></script>
-<script src="/assets/js/ticket-session.js"></script>
-<script src="/assets/js/ticket-service.js"></script>
-<script src="/assets/js/ticket-dictionary.js"></script>
-<script src="/assets/js/ticket-settings-tools.js"></script>
-<script src="/assets/js/ticket-fold-state.js"></script>
-<script src="/assets/js/ticket-bindings.js"></script>
+<script defer src="/assets/js/ticket-config.js"></script>
+<script defer src="/assets/js/ticket-auth.js"></script>
+<script defer src="/assets/js/ticket-utils.js"></script>
+<script defer src="/assets/js/ticket-health.js"></script>
+<script defer src="/assets/js/ticket-dialogs.js"></script>
+<script defer src="/assets/js/ticket-api.js"></script>
+<script defer src="/assets/js/ticket-session.js"></script>
+<script defer src="/assets/js/ticket-service.js"></script>
+<script defer src="/assets/js/ticket-dictionary.js"></script>
+<script defer src="/assets/js/ticket-settings-tools.js"></script>
+<script defer src="/assets/js/ticket-fold-state.js"></script>
+<script defer src="/assets/js/ticket-bindings.js"></script>
 <link rel="stylesheet" href="/assets/app.css"/>
 </head>
 <body>
@@ -27,7 +27,7 @@
 <div class="page-header-main">
 <p class="page-eyebrow">系统管理</p>
 <h1>管理员页面</h1>
-<p class="page-summary">集中管理写入口令、健康检查、一键自检与故障类型字典。</p>
+<p class="page-summary">集中管理写入/管理员口令、健康检查、一键自检与故障类型字典。</p>
 </div>
 <div class="page-header-meta">
 <span class="page-meta-chip">管理视图</span>
@@ -38,8 +38,8 @@
 <section class="card section-toolbar" aria-labelledby="adminEntryTitle">
 <div class="section-toolbar-head">
 <div>
-<h2 id="adminEntryTitle" style="margin:0;">管理入口</h2>
-<div class="muted section-toolbar-desc">先完成管理员验证，再访问系统设置、健康检查与字典管理。</div>
+<h2 class="u-m0" id="adminEntryTitle">管理入口</h2>
+<div class="muted section-toolbar-desc">先完成管理员口令验证，再访问系统设置、健康检查与字典管理。</div>
 </div>
 <div class="section-toolbar-actions">
 <button class="secondary" hidden id="btnAdminLock" type="button">退出管理员</button>
@@ -50,9 +50,9 @@
 
 <div class="card admin-gate" id="adminGate">
 <h2>管理员验证</h2>
-<div class="muted">请输入并验证写入口令后，才能查看系统设置、系统管理和故障类型字典。</div>
+<div class="muted">请输入管理员口令；如果未单独配置 ADMIN_KEY，可使用写入口令。</div>
 <div class="admin-gate-actions">
-<button class="primary" id="btnAdminUnlock" type="button">输入 / 验证口令</button>
+<button class="primary" id="btnAdminUnlock" type="button">输入 / 验证管理员口令</button>
 <span aria-live="polite" class="admin-gate-message" id="adminGateMessage"></span>
 </div>
 </div>
@@ -73,7 +73,7 @@
       <summary class="settings-summary">
         <div class="settings-left">
           <div class="settings-title-row">
-            <div class="settings-title">写入权限</div>
+            <div class="settings-title">写入/管理员权限</div>
             <span id="editKeyStatus" class="pill off">未设置</span>
           </div>
           <div class="settings-meta">上次设置：<span id="editKeySetAt">-</span></div>
@@ -87,7 +87,7 @@
       </summary>
 
       <div class="settings-desc">
-        读取（GET）公开；新增/编辑/删除/覆盖导入需要共享写入口令。口令仅保存在当前浏览器会话，关闭标签页后需要重新输入。
+        新增、编辑、删除、合并导入需要写入口令；迁移、自检、FTS 重建、健康详情和整库覆盖导入需要管理员口令。
       </div>
     </details>
 
@@ -109,7 +109,7 @@
       </summary>
 
       <div class="settings-desc">
-        管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。仅对写入口令有效。
+        管理员一键执行：数据库迁移（migrate）→ FTS 重建（rebuild）→ 索引/版本自检。需要管理员口令。
       </div>
     </details>
   </div>
@@ -140,11 +140,11 @@
 <span class="settings-fold-arrow" aria-hidden="true"></span>
 </summary>
 <div class="settings-desc">
-<div aria-live="polite" id="healthSummary" style="font-size:14px;">加载中…</div>
+<div aria-live="polite" class="health-summary-text" id="healthSummary">加载中…</div>
 </div>
 </details>
 
-<details class="settings-item" style="margin-top:12px;" id="systemTypeDictPanel" open data-fold-key="system-type-dict">
+<details class="settings-item settings-item-spaced" id="systemTypeDictPanel" open data-fold-key="system-type-dict">
 <summary class="settings-summary">
 <div class="settings-left">
 <div class="settings-title-row">
@@ -176,16 +176,16 @@
 <button type="button" id="btnClearTypeDict">清空</button>
 </div>
 </div>
-<div id="typeDictHint" class="muted" style="margin-top:8px;">-</div>
-<div class="table-wrap" style="margin-top:12px; max-height: 360px;">
+<div id="typeDictHint" class="muted type-dict-hint">-</div>
+<div class="table-wrap type-dict-table-wrap">
 <table id="typeDictTable">
 <thead>
 <tr>
-<th style="width:90px;">排序</th>
+<th class="type-dict-col-sort">排序</th>
 <th>类型名称</th>
-<th style="width:110px;">工单数</th>
-<th style="width:110px;">状态</th>
-<th style="width:180px;">操作</th>
+<th class="type-dict-col-count">工单数</th>
+<th class="type-dict-col-status">状态</th>
+<th class="type-dict-col-actions">操作</th>
 </tr>
 </thead>
 <tbody id="typeDictBody"></tbody>
@@ -197,18 +197,18 @@
 </details>
 </div>
 
-<!-- 写入口令设置 -->
+<!-- 写入/管理员口令设置 -->
 <div class="ticket-modal-mask" id="keyModal">
   <div class="ticket-modal-panel key-modal-panel" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
     <div class="ticket-modal-header">
-      <div style="font-weight:700;font-size:18px;" id="keyModalTitle">写入口令设置</div>
+      <div class="modal-title-inline" id="keyModalTitle">写入/管理员口令设置</div>
       <button aria-label="关闭口令设置" type="button" class="ticket-modal-close" id="keyModalCloseTop">×</button>
     </div>
 
     <div class="key-form">
       <div class="key-row">
-        <label for="editKeyInput"><b>写入口令</b></label>
-        <input id="editKeyInput" class="key-input" name="editKeyInput" type="password" autocomplete="off" placeholder="输入共享口令（用于新增 / 编辑 / 删除 / 导入）"/>
+        <label for="editKeyInput"><b>写入/管理员口令</b></label>
+        <input id="editKeyInput" class="key-input" name="editKeyInput" type="password" autocomplete="off" placeholder="管理员操作请输入管理员口令"/>
       </div>
 
       <div class="key-row">
@@ -218,9 +218,9 @@
 
       <div class="key-help">
         <div>• 上次设置：<b><span id="editKeySetAt2">-</span></b></div>
-        <div>• 读取（GET）公开；写入（POST/PUT/DELETE/导入覆盖云端）需要口令。</div>
+        <div>• 写入操作需要写入口令；迁移、自检、FTS 重建、健康详情和整库覆盖导入需要管理员口令。</div>
         <div>• 口令仅保存在<b>当前会话</b>的 sessionStorage，关闭标签页后需要重新输入。</div>
-        <div>• 如果口令输入错误，写操作会返回 401，并提示你重新设置。</div>
+        <div>• 如果口令输入错误，接口会返回 403，并提示你重新设置。</div>
       </div>
 
       <div class="key-actions">
@@ -246,6 +246,6 @@
 </div>
 </div>
  </main>
-<script src="/assets/js/ticket-admin-bootstrap.js"></script>
+<script defer src="/assets/js/ticket-admin-bootstrap.js"></script>
 </body>
 </html>

@@ -213,6 +213,22 @@
       color: #98a2b3;
     }
     .muted { color: var(--muted); }
+    .u-m0 { margin: 0; }
+    .u-mt0 { margin-top: 0; }
+    .view-mode-pill { margin-left: 6px; }
+    .settings-item-spaced { margin-top: 12px; }
+    .backup-load-label { font-size: 13px; margin-left: 4px; }
+    .backup-directory-row { margin-top: 8px; font-size: 13px; }
+    .stats-inline { margin-top: 10px; font-size: 14px; }
+    .chart-surface-spaced { margin-top: 14px; }
+    .modal-title-inline { font-weight: 700; font-size: 18px; }
+    .health-summary-text { font-size: 14px; }
+    .type-dict-hint { margin-top: 8px; }
+    .type-dict-table-wrap { margin-top: 12px; max-height: 360px; }
+    .type-dict-col-sort { width: 90px; }
+    .type-dict-col-count,
+    .type-dict-col-status { width: 110px; }
+    .type-dict-col-actions { width: 180px; }
     .filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
     .filters > div { display: flex; flex-direction: column; }
     .filters-actions { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -343,6 +359,22 @@
     }
     .legend-item:last-child{ border-bottom:none; }
     .legend-swatch{ width:10px; height:10px; border-radius: 3px; flex:0 0 auto; }
+    .legend-color-0 { background: hsl(210 75% 55%); }
+    .legend-color-1 { background: hsl(177 70% 42%); }
+    .legend-color-2 { background: hsl(36 88% 56%); }
+    .legend-color-3 { background: hsl(349 76% 58%); }
+    .legend-color-4 { background: hsl(262 70% 62%); }
+    .legend-color-5 { background: hsl(145 58% 42%); }
+    .legend-color-6 { background: hsl(14 82% 58%); }
+    .legend-color-7 { background: hsl(224 64% 48%); }
+    .legend-color-8 { background: hsl(314 62% 56%); }
+    .legend-color-9 { background: hsl(88 52% 42%); }
+    .legend-color-10 { background: hsl(194 72% 45%); }
+    .legend-color-11 { background: hsl(46 88% 46%); }
+    .legend-color-12 { background: hsl(285 58% 52%); }
+    .legend-color-13 { background: hsl(165 56% 36%); }
+    .legend-color-14 { background: hsl(4 70% 54%); }
+    .legend-color-15 { background: hsl(240 54% 56%); }
     .legend-name{
       flex: 1 1 auto;
       min-width: 0;

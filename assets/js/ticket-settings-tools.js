@@ -276,19 +276,6 @@ function normalizeOneClickResult(raw) {
 }
 
 function stepLabel(obj) {
-  if (!obj) return { text: '未执行', tone: 'neutral' };
-  if (obj.skipped || obj.skip) return { text: '跳过', tone: 'neutral' };
-  if (obj.ok === true) return { text: '成功', tone: 'good' };
-  if (obj.ok === false) return { text: '失败', tone: 'bad' };
-  const st = (obj.status || obj.state || '').toString().toLowerCase();
-  if (st === 'ok' || st === 'success') return { text: '成功', tone: 'good' };
-  if (st === 'fail' || st === 'error') return { text: '失败', tone: 'bad' };
-  if (st === 'skip' || st === 'skipped') return { text: '跳过', tone: 'neutral' };
-  return { text: '未知', tone: 'neutral' };
-}
-
-
-function stepLabel(obj) {
   if (!obj) return { text: "未执行", tone: "neutral" };
   if (obj.skipped || obj.skip) return { text: "跳过", tone: "neutral" };
   if (obj.ok === true) return { text: "成功", tone: "good" };
@@ -403,7 +390,7 @@ async function runOneClickInit() {
   const key = getEditKey();
   if (!key) {
     openKeyModal();
-    if (typeof showToast === "function") showToast("请先设置写入口令，再执行一键初始化。", "warning");
+    if (typeof showToast === "function") showToast("请先设置管理员口令，再执行一键初始化。", "warning");
     return;
   }
   const btn = document.getElementById("btnOneClick");
@@ -435,7 +422,7 @@ async function runOneClickInit() {
       clearEditKeySetAt();
       updateEditKeyStatus();
       setOneClickPill("off", "无权限");
-      if (typeof showToast === "function") showToast("口令无效（403），请重新设置。", "error");
+      if (typeof showToast === "function") showToast("管理员口令无效（403），请重新设置。", "error");
       openKeyModal();
     } else {
       setOneClickPill("off", "失败");
@@ -451,24 +438,4 @@ async function runOneClickInit() {
     if (btn) btn.disabled = !getEditKey();
   }
 }
-
-// ⭐ 本地存储：从 localStorage 恢复 records
-    function loadFromLocal() {
-      try {
-        const saved = localStorage.getItem("ticket_records");
-        if (saved) {
-          const data = JSON.parse(saved);
-          if (Array.isArray(data)) {
-            records = normalizeRecords(data);
-            const maxId = records.reduce((max, r) => {
-              const v = Number(r.id);
-              return Number.isFinite(v) ? Math.max(max, v) : max;
-            }, 0);
-            nextId = maxId + 1;
-          }
-        }
-      } catch (e) {
-        console.error("从本地恢复数据失败：", e);
-      }
-    }
 

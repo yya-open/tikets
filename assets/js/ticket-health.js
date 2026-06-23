@@ -58,7 +58,7 @@
     } catch (e) {
       console.warn(e);
       render({ ok: false });
-      if (typeof showToast === 'function') showToast('系统健康检查失败。', 'error');
+      if (typeof showToast === 'function') showToast('系统健康检查失败，请确认已设置管理员口令。', 'error');
       return null;
     } finally {
       if (summary) summary.setAttribute('aria-busy', 'false');
