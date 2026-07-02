@@ -27,11 +27,11 @@
 <script defer src="/assets/js/ticket-form-modal.js"></script>
 <script defer src="/assets/js/ticket-export-tools.js"></script>
 <script defer src="/assets/app.js"></script>
-<script defer src="/assets/js/ticket-table-view.js"></script>
+<script defer src="/assets/js/ticket-table-view.js?v=20260703-table"></script>
 <script defer src="/assets/js/ticket-stats-view.js"></script>
 <script defer src="/assets/js/ticket-fold-state.js"></script>
 <script defer src="/assets/js/ticket-bindings.js"></script>
-<link rel="stylesheet" href="/assets/app.css"/>
+<link rel="stylesheet" href="/assets/app.css?v=20260703-table"/>
 
 </head>
 <body>
@@ -48,6 +48,34 @@
 <span class="page-meta-chip">Cloudflare Pages</span>
 </div>
 </header>
+<nav class="product-nav" aria-label="产品导航">
+<a class="product-nav-item active" href="/">工单工作台</a>
+<a class="product-nav-item" href="/admin.html">系统管理</a>
+<a class="product-nav-item" href="#recordTable">工单列表</a>
+<a class="product-nav-item" href="#statsCards">统计分析</a>
+</nav>
+<section class="product-overview" aria-label="运营概览">
+<div class="overview-card overview-card-primary">
+<div class="overview-label">当前工作区</div>
+<div class="overview-value">工单协同台</div>
+<div class="overview-note">面向录入、筛选、统计和导出的日常处理流程。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">数据来源</div>
+<div class="overview-value">Cloudflare D1</div>
+<div class="overview-note">云端共享数据，支持多人访问和安全导入。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">写入保护</div>
+<div class="overview-value">会话口令</div>
+<div class="overview-note">新增、编辑、删除和导入操作需要有效口令。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">建议流程</div>
+<div class="overview-value">先筛选，再处理</div>
+<div class="overview-note">按月份、类型、部门和关键字聚焦当前任务。</div>
+</div>
+</section>
 <section class="card section-toolbar" aria-labelledby="workbenchTitle">
 <div class="section-toolbar-head">
 <div>

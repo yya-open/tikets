@@ -162,7 +162,8 @@ test("pages keep scripts and styles externalized for CSP", () => {
     assert.equal(html.includes("cdn.jsdelivr.net"), false);
 
     for (const match of html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)/g)) {
-      assert.equal(existsSync(new URL(`..${match[1]}`, import.meta.url)), true, `${match[1]} should exist`);
+      const assetPath = match[1].split("?")[0];
+      assert.equal(existsSync(new URL(`..${assetPath}`, import.meta.url)), true, `${match[1]} should exist`);
     }
   }
 

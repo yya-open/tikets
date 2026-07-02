@@ -17,7 +17,7 @@
 <script defer src="/assets/js/ticket-settings-tools.js"></script>
 <script defer src="/assets/js/ticket-fold-state.js"></script>
 <script defer src="/assets/js/ticket-bindings.js"></script>
-<link rel="stylesheet" href="/assets/app.css"/>
+<link rel="stylesheet" href="/assets/app.css?v=20260703-table"/>
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -33,6 +33,34 @@
 <span class="page-meta-chip">受口令保护</span>
 </div>
 </header>
+<nav class="product-nav" aria-label="产品导航">
+<a class="product-nav-item" href="/">工单工作台</a>
+<a class="product-nav-item active" href="/admin.html">系统管理</a>
+<a class="product-nav-item" href="#systemHealthPanel">健康检查</a>
+<a class="product-nav-item" href="#systemTypeDictPanel">类型字典</a>
+</nav>
+<section class="product-overview admin-overview" aria-label="系统治理概览">
+<div class="overview-card overview-card-primary">
+<div class="overview-label">管理范围</div>
+<div class="overview-value">系统治理</div>
+<div class="overview-note">集中处理权限验证、数据库初始化和运行健康状态。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">高危操作</div>
+<div class="overview-value">管理员口令</div>
+<div class="overview-note">迁移、自检、FTS 重建和覆盖导入均受保护。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">数据规范</div>
+<div class="overview-value">类型字典</div>
+<div class="overview-note">统一维护工单类型，减少录入偏差和统计噪音。</div>
+</div>
+<div class="overview-card">
+<div class="overview-label">发布后动作</div>
+<div class="overview-value">先自检</div>
+<div class="overview-note">部署或升级后建议执行一键初始化和健康检查。</div>
+</div>
+</section>
 
 <section class="card section-toolbar" aria-labelledby="adminEntryTitle">
 <div class="section-toolbar-head">

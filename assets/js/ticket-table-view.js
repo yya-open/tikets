@@ -3,6 +3,56 @@ function escapeDetailValue(value) {
   return v ? escapeHtml(v) : '<span class="ticket-detail-empty">未填写</span>';
 }
 
+function tableText(value, fallback = "未填写") {
+  const v = String(value ?? "").trim();
+  return v || fallback;
+}
+
+function appendTextCell(row, className, value, fallback = "未填写") {
+  const cell = row.insertCell();
+  cell.className = className;
+  const text = document.createElement("span");
+  text.className = value ? "table-cell-text" : "table-cell-empty";
+  text.textContent = tableText(value, fallback);
+  cell.appendChild(text);
+  return cell;
+}
+
+function appendIssueCell(row, record) {
+  const cell = row.insertCell();
+  cell.className = "ticket-issue-cell";
+  const title = document.createElement("div");
+  title.className = "ticket-issue-title";
+  title.textContent = tableText(record.issue, "未填写问题描述");
+  const meta = document.createElement("div");
+  meta.className = "ticket-issue-meta";
+  meta.textContent = `#${record.id || "-"} · ${tableText(record.date, "未设置日期")}`;
+  cell.appendChild(title);
+  cell.appendChild(meta);
+  return cell;
+}
+
+function appendTypeCell(row, type) {
+  const cell = row.insertCell();
+  cell.className = "ticket-type-cell";
+  const pill = document.createElement("span");
+  pill.className = "ticket-type-pill";
+  pill.textContent = tableText(type, "未分类");
+  cell.appendChild(pill);
+  return cell;
+}
+
+function appendActionButton(container, text, className, action, id) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = text;
+  btn.className = className;
+  btn.dataset.action = action;
+  btn.dataset.id = String(id);
+  container.appendChild(btn);
+  return btn;
+}
+
 function closeTicketDetailModal() {
   const overlay = document.getElementById('ticketDetailModal');
   const bodyEl = document.getElementById('ticketDetailBody');
@@ -664,10 +714,20 @@ async function renderTable({ resetPage = true } = {}) {
     const row = tbody.insertRow();
     const cell = row.insertCell(0);
     cell.colSpan = 9;
-    cell.style.textAlign = "center";
-    cell.style.color = "#999";
-    cell.style.padding = "14px 8px";
-    cell.innerText = viewMode === "trash" ? "回收站暂无记录" : "暂无工单记录";
+    cell.className = "table-empty-cell";
+    const empty = document.createElement("div");
+    empty.className = "table-empty-state";
+    const title = document.createElement("div");
+    title.className = "table-empty-title";
+    title.textContent = viewMode === "trash" ? "回收站暂无记录" : "暂无工单记录";
+    const desc = document.createElement("div");
+    desc.className = "table-empty-desc";
+    desc.textContent = viewMode === "trash"
+      ? "被删除的工单会出现在这里，可在恢复前核对详情。"
+      : "可以新建第一条工单，或调整筛选条件后重新查看。";
+    empty.appendChild(title);
+    empty.appendChild(desc);
+    cell.appendChild(empty);
   } else {
     pageRecords.forEach(r => {
       const row = tbody.insertRow();
@@ -683,65 +743,27 @@ async function renderTable({ resetPage = true } = {}) {
       checkbox.checked = selectedTicketIds.has(Number(r.id));
       selectCell.appendChild(checkbox);
       row.classList.toggle('row-selected', checkbox.checked);
-      row.insertCell(1).innerText = r.date;
-      row.insertCell(2).innerText = r.issue;
-      row.insertCell(3).innerText = r.department;
-      row.insertCell(4).innerText = r.name;
-      row.insertCell(5).innerText = r.solution;
-      row.insertCell(6).innerText = r.remarks;
-      row.insertCell(7).innerText = r.type;
+      appendTextCell(row, "ticket-date-cell", r.date, "未设置");
+      appendIssueCell(row, r);
+      appendTextCell(row, "ticket-org-cell", r.department);
+      appendTextCell(row, "ticket-person-cell", r.name);
+      appendTextCell(row, "ticket-long-cell", r.solution);
+      appendTextCell(row, "ticket-long-cell", r.remarks);
+      appendTypeCell(row, r.type);
       const actionCell = row.insertCell(8);
+      actionCell.className = "ticket-action-cell";
+      const actionStack = document.createElement("div");
+      actionStack.className = "action-stack table-action-stack";
+      actionCell.appendChild(actionStack);
 
       if (viewMode === "trash") {
-        const viewBtn = document.createElement("button");
-        viewBtn.type = 'button';
-        viewBtn.innerText = "查看";
-        viewBtn.className = "small secondary";
-        viewBtn.dataset.action = 'view';
-        viewBtn.dataset.id = String(r.id);
-
-        const restoreBtn = document.createElement("button");
-        restoreBtn.type = 'button';
-        restoreBtn.innerText = "恢复";
-        restoreBtn.className = "small";
-        restoreBtn.dataset.action = 'restore';
-        restoreBtn.dataset.id = String(r.id);
-
-        const hardBtn = document.createElement("button");
-        hardBtn.type = 'button';
-        hardBtn.innerText = "彻底删除";
-        hardBtn.className = "small danger";
-        hardBtn.dataset.action = 'hard-delete';
-        hardBtn.dataset.id = String(r.id);
-
-        actionCell.appendChild(viewBtn);
-        actionCell.appendChild(restoreBtn);
-        actionCell.appendChild(hardBtn);
+        appendActionButton(actionStack, "查看", "small secondary", "view", r.id);
+        appendActionButton(actionStack, "恢复", "small", "restore", r.id);
+        appendActionButton(actionStack, "彻底删除", "small danger", "hard-delete", r.id);
       } else {
-        const viewBtn = document.createElement("button");
-        viewBtn.type = 'button';
-        viewBtn.innerText = "查看";
-        viewBtn.className = "small secondary";
-        viewBtn.dataset.action = 'view';
-        viewBtn.dataset.id = String(r.id);
-
-        const editBtn = document.createElement("button");
-        editBtn.type = 'button';
-        editBtn.innerText = "编辑";
-        editBtn.className = "small";
-        editBtn.dataset.action = 'edit';
-        editBtn.dataset.id = String(r.id);
-
-        const delBtn = document.createElement("button");
-        delBtn.type = 'button';
-        delBtn.innerText = "删除";
-        delBtn.className = "small danger";
-        delBtn.dataset.action = 'delete';
-        delBtn.dataset.id = String(r.id);
-
-        actionCell.appendChild(viewBtn);
-        actionCell.appendChild(editBtn);
-        actionCell.appendChild(delBtn);
+        appendActionButton(actionStack, "查看", "small secondary", "view", r.id);
+        appendActionButton(actionStack, "编辑", "small", "edit", r.id);
+        appendActionButton(actionStack, "删除", "small danger", "delete", r.id);
       }
     });
   }
