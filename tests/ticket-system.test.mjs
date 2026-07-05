@@ -151,8 +151,10 @@ test("main page loads ticket filters before query runtime", () => {
   assert.match(html, /id="tableDensitySelect"/);
   assert.match(html, /id="columnSettingsPanel"/);
   assert.match(html, /id="btnBatchApplyWorkflow"/);
-  assert.doesNotMatch(html, /<th data-column="status">/);
-  assert.doesNotMatch(html, /<th data-column="priority">/);
+  assert.doesNotMatch(html, /class="product-overview"/);
+  assert.doesNotMatch(html, /工单协同台/);
+  assert.match(html, /<th data-column="status">状态<\/th>/);
+  assert.match(html, /<th data-column="priority">优先级<\/th>/);
   assert.match(html, /data-column="assignee"/);
   assert.match(html, /data-column="due_date"/);
 });
@@ -161,6 +163,8 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   const tableView = readFileSync(new URL("../assets/js/ticket-table-view.js", import.meta.url), "utf8");
 
   assert.match(tableView, /ticket_visible_columns_v2/);
+  assert.match(tableView, /\{ key: "status", label: "状态", defaultHidden: true \}/);
+  assert.match(tableView, /\{ key: "priority", label: "优先级", defaultHidden: true \}/);
   assert.match(tableView, /\{ key: "assignee", label: "负责人", defaultHidden: true \}/);
   assert.match(tableView, /\{ key: "due_date", label: "截止日期", defaultHidden: true \}/);
   assert.match(tableView, /function getDefaultVisibleColumns\(\)/);

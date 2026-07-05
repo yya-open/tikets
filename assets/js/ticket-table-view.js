@@ -46,6 +46,8 @@ const WORKFLOW_PRIORITIES = ["紧急", "高", "普通", "低"];
 const TABLE_COLUMNS = [
   { key: "date", label: "日期", required: true },
   { key: "issue", label: "问题", required: true },
+  { key: "status", label: "状态", defaultHidden: true },
+  { key: "priority", label: "优先级", defaultHidden: true },
   { key: "assignee", label: "负责人", defaultHidden: true },
   { key: "due_date", label: "截止日期", defaultHidden: true },
   { key: "department", label: "部门" },
@@ -996,6 +998,8 @@ async function renderTable({ resetPage = true } = {}) {
       row.classList.toggle('row-selected', checkbox.checked);
       appendTextCell(row, "ticket-date-cell", r.date, "未设置", "date");
       appendIssueCell(row, r);
+      appendBadgeCell(row, "status", r.status, "待处理");
+      appendBadgeCell(row, "priority", r.priority, "普通");
       appendTextCell(row, "ticket-assignee-cell", r.assignee, "未指派", "assignee");
       appendDueCell(row, r);
       appendTextCell(row, "ticket-org-cell", r.department, "未填写", "department");
