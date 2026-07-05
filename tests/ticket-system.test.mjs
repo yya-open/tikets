@@ -154,6 +154,17 @@ test("main page loads ticket filters before query runtime", () => {
   assert.doesNotMatch(html, /<th data-column="status">/);
   assert.doesNotMatch(html, /<th data-column="priority">/);
   assert.match(html, /data-column="assignee"/);
+  assert.match(html, /data-column="due_date"/);
+});
+
+test("ticket table columns can be hidden with sensible defaults", () => {
+  const tableView = readFileSync(new URL("../assets/js/ticket-table-view.js", import.meta.url), "utf8");
+
+  assert.match(tableView, /ticket_visible_columns_v2/);
+  assert.match(tableView, /\{ key: "assignee", label: "负责人", defaultHidden: true \}/);
+  assert.match(tableView, /\{ key: "due_date", label: "截止日期", defaultHidden: true \}/);
+  assert.match(tableView, /function getDefaultVisibleColumns\(\)/);
+  assert.match(tableView, /function resetColumnVisibilityDefaults\(\)/);
 });
 
 test("pages load auth and api through the ES module core entry", () => {

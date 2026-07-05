@@ -46,8 +46,8 @@ const WORKFLOW_PRIORITIES = ["紧急", "高", "普通", "低"];
 const TABLE_COLUMNS = [
   { key: "date", label: "日期", required: true },
   { key: "issue", label: "问题", required: true },
-  { key: "assignee", label: "负责人" },
-  { key: "due_date", label: "截止日期" },
+  { key: "assignee", label: "负责人", defaultHidden: true },
+  { key: "due_date", label: "截止日期", defaultHidden: true },
   { key: "department", label: "部门" },
   { key: "name", label: "姓名" },
   { key: "solution", label: "处理方法" },
@@ -55,6 +55,7 @@ const TABLE_COLUMNS = [
   { key: "type", label: "类型" },
   { key: "actions", label: "操作", required: true },
 ];
+const COLUMN_VISIBILITY_STORAGE_KEY = "ticket_visible_columns_v2";
 
 function readJsonSetting(key, fallback) {
   try {
@@ -69,9 +70,17 @@ function writeJsonSetting(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+function getDefaultVisibleColumns() {
+  return TABLE_COLUMNS
+    .filter((col) => col.required || !col.defaultHidden)
+    .map((col) => col.key);
+}
+
 function getVisibleColumns() {
-  const saved = readJsonSetting("ticket_visible_columns_v1", null);
-  const visible = new Set(Array.isArray(saved) ? saved : TABLE_COLUMNS.map((c) => c.key));
+  const validColumns = new Set(TABLE_COLUMNS.map((col) => col.key));
+  const saved = readJsonSetting(COLUMN_VISIBILITY_STORAGE_KEY, null);
+  const savedColumns = Array.isArray(saved) ? saved.filter((key) => validColumns.has(key)) : null;
+  const visible = new Set(savedColumns || getDefaultVisibleColumns());
   TABLE_COLUMNS.forEach((col) => { if (col.required) visible.add(col.key); });
   return visible;
 }
@@ -81,7 +90,11 @@ function setColumnVisibility(key, visible) {
   if (visible) cols.add(key);
   else cols.delete(key);
   TABLE_COLUMNS.forEach((col) => { if (col.required) cols.add(col.key); });
-  writeJsonSetting("ticket_visible_columns_v1", Array.from(cols));
+  writeJsonSetting(COLUMN_VISIBILITY_STORAGE_KEY, Array.from(cols));
+}
+
+function resetColumnVisibilityDefaults() {
+  writeJsonSetting(COLUMN_VISIBILITY_STORAGE_KEY, getDefaultVisibleColumns());
 }
 
 function applyColumnVisibility(root = document) {
@@ -90,6 +103,10 @@ function applyColumnVisibility(root = document) {
     const key = el.getAttribute("data-column");
     el.hidden = key && !visible.has(key);
   });
+}
+
+function getVisibleTableColumnCount() {
+  return 1 + TABLE_COLUMNS.filter((col) => getVisibleColumns().has(col.key)).length;
 }
 
 function appendBadgeCell(row, key, value, fallback) {
@@ -758,6 +775,22 @@ function renderColumnSettings() {
     label.appendChild(document.createTextNode(col.label));
     panel.appendChild(label);
   });
+  const actions = document.createElement("div");
+  actions.className = "column-settings-actions";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "small secondary";
+  resetBtn.textContent = "恢复默认列";
+  resetBtn.addEventListener("click", () => {
+    resetColumnVisibilityDefaults();
+    const defaults = getVisibleColumns();
+    panel.querySelectorAll("input[data-column-toggle]").forEach((input) => {
+      input.checked = defaults.has(input.dataset.columnToggle);
+    });
+    applyColumnVisibility(document);
+  });
+  actions.appendChild(resetBtn);
+  panel.appendChild(actions);
   applyColumnVisibility(document);
 }
 
@@ -931,7 +964,7 @@ async function renderTable({ resetPage = true } = {}) {
   if (pageRecords.length === 0) {
     const row = tbody.insertRow();
     const cell = row.insertCell(0);
-    cell.colSpan = 11;
+    cell.colSpan = getVisibleTableColumnCount();
     cell.className = "table-empty-cell";
     const empty = document.createElement("div");
     empty.className = "table-empty-state";
