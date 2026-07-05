@@ -151,7 +151,8 @@ test("main page loads ticket filters before query runtime", () => {
   assert.match(html, /id="tableDensitySelect"/);
   assert.match(html, /id="columnSettingsPanel"/);
   assert.match(html, /id="btnBatchApplyWorkflow"/);
-  assert.match(html, /data-column="status"/);
+  assert.doesNotMatch(html, /<th data-column="status">/);
+  assert.doesNotMatch(html, /<th data-column="priority">/);
   assert.match(html, /data-column="assignee"/);
 });
 
