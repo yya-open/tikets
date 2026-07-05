@@ -47,6 +47,12 @@ function resetForm(resetEditing = true) {
     window.TicketDictionary.refreshSelects();
   }
   document.getElementById("type").value = getDefaultTicketType();
+  const status = document.getElementById("status");
+  const priority = document.getElementById("priority");
+  const dueDate = document.getElementById("due_date");
+  if (status) status.value = "待处理";
+  if (priority) priority.value = "普通";
+  if (dueDate) dueDate.value = "";
   if (window.TicketValidation) window.TicketValidation.clearValidationErrors();
   if (resetEditing) {
     window.TicketAppState.editingId = null;
@@ -71,6 +77,14 @@ function fillFormFromRecord(record) {
   document.getElementById("solution").value = record.solution || "";
   document.getElementById("remarks").value = record.remarks || "";
   document.getElementById("type").value = record.type || getDefaultTicketType();
+  const status = document.getElementById("status");
+  const priority = document.getElementById("priority");
+  const assignee = document.getElementById("assignee");
+  const dueDate = document.getElementById("due_date");
+  if (status) status.value = record.status || "待处理";
+  if (priority) priority.value = record.priority || "普通";
+  if (assignee) assignee.value = record.assignee || "";
+  if (dueDate) dueDate.value = record.due_date || "";
   if (window.TicketValidation) window.TicketValidation.clearValidationErrors();
   document.getElementById("submitBtn").innerText = "保存修改";
 }
@@ -89,6 +103,10 @@ async function addOrUpdateRecord() {
     issue: document.getElementById("issue").value,
     department: document.getElementById("department").value,
     name: document.getElementById("name").value,
+    status: document.getElementById("status")?.value || "待处理",
+    priority: document.getElementById("priority")?.value || "普通",
+    assignee: document.getElementById("assignee")?.value || "",
+    due_date: document.getElementById("due_date")?.value || "",
     solution: document.getElementById("solution").value,
     remarks: document.getElementById("remarks").value,
     type: document.getElementById("type").value

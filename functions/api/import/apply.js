@@ -42,12 +42,14 @@ export async function onRequestPost({ request, env }) {
   const insertStmt = env.DB.prepare(
     `INSERT INTO tickets (
       id, date, issue, department, name, solution, remarks, type,
+      status, priority, assignee, due_date, closed_at,
       is_deleted, deleted_at, updated_at, updated_at_ts
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?)`
   );
   const updateStmt = env.DB.prepare(
     `UPDATE tickets SET
       date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+      status=?, priority=?, assignee=?, due_date=?, closed_at=?,
       is_deleted=?, deleted_at=?, updated_at=COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), updated_at_ts=?
      WHERE id=?`
   );
@@ -66,10 +68,10 @@ export async function onRequestPost({ request, env }) {
     if (!row.date || !row.issue) continue;
     const existing = Number.isFinite(row.id) ? existingMap.get(row.id) : null;
     if (!existing) {
-      statements.push(insertStmt.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs));
+      statements.push(insertStmt.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.status, row.priority, row.assignee, row.due_date || null, row.closed_at || null, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs));
     } else {
       if (!updateIds.has(row.id)) continue;
-      statements.push(updateStmt.bind(row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs, row.id));
+      statements.push(updateStmt.bind(row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.status, row.priority, row.assignee, row.due_date || null, row.closed_at || null, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs, row.id));
     }
     if (statements.length >= 100) await flushBatch();
   }

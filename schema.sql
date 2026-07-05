@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS tickets (
   solution TEXT,
   remarks TEXT,
   type TEXT,
+  status TEXT DEFAULT '待处理',
+  priority TEXT DEFAULT '普通',
+  assignee TEXT,
+  due_date TEXT,
+  closed_at TEXT,
   updated_at TEXT DEFAULT (datetime('now')),
   updated_at_ts INTEGER DEFAULT 0,
   -- v2: recycle bin (soft delete)
@@ -18,3 +23,5 @@ CREATE TABLE IF NOT EXISTS tickets (
 CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_date_id ON tickets(is_deleted, date, id);
 CREATE INDEX IF NOT EXISTS idx_tickets_isdeleted_deletedat_id ON tickets(is_deleted, deleted_at, id);
 CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);

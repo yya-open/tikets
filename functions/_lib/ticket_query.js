@@ -27,7 +27,7 @@ export function buildDeletedFilter(trash, statusDeleted = null) {
   return statusDeleted === null ? (trash ? 1 : 0) : statusDeleted;
 }
 
-export function pushTicketFilters(where, binds, { deleted, from, to, type, department, name }) {
+export function pushTicketFilters(where, binds, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate }) {
   where.push("tickets.is_deleted=?");
   binds.push(deleted);
 
@@ -50,6 +50,29 @@ export function pushTicketFilters(where, binds, { deleted, from, to, type, depar
   if (name) {
     where.push("tickets.name LIKE ?");
     binds.push(`%${name}%`);
+  }
+  if (ticketStatus) {
+    where.push("tickets.status = ?");
+    binds.push(ticketStatus);
+  }
+  if (assignee) {
+    where.push("tickets.assignee LIKE ?");
+    binds.push(`%${assignee}%`);
+  }
+  if (priority) {
+    where.push("tickets.priority = ?");
+    binds.push(priority);
+  }
+  if (quick === "open") {
+    where.push("COALESCE(NULLIF(TRIM(tickets.status),''),'待处理') IN ('待处理','处理中')");
+  } else if (quick === "overdue" && quickDate) {
+    where.push("tickets.due_date IS NOT NULL AND tickets.due_date <> '' AND tickets.due_date < ? AND COALESCE(NULLIF(TRIM(tickets.status),''),'待处理') NOT IN ('已解决','已关闭')");
+    binds.push(quickDate);
+  } else if (quick === "today" && quickDate) {
+    where.push("tickets.date = ?");
+    binds.push(quickDate);
+  } else if (quick === "unassigned") {
+    where.push("(tickets.assignee IS NULL OR TRIM(tickets.assignee) = '')");
   }
 }
 

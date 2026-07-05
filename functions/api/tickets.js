@@ -93,6 +93,12 @@ async function handleGet({ request, env }) {
   const type = normalizeTextParam(url.searchParams.get("type"));
   const department = normalizeFilterTextParam(url.searchParams.get("department"));
   const name = normalizeFilterTextParam(url.searchParams.get("name"));
+  const ticketStatus = normalizeFilterTextParam(url.searchParams.get("ticketStatus") || url.searchParams.get("workStatus"));
+  const assignee = normalizeFilterTextParam(url.searchParams.get("assignee"));
+  const priority = normalizeFilterTextParam(url.searchParams.get("priority"));
+  const quickRaw = normalizeFilterTextParam(url.searchParams.get("quick"), 24);
+  const quick = ["open", "overdue", "today", "unassigned"].includes(quickRaw) ? quickRaw : "";
+  const quickDate = normalizeDateParam(url.searchParams.get("quickDate")) || new Date().toISOString().slice(0, 10);
   const statusDeleted = normalizeStatusDeletedParam(url.searchParams.get("status"));
   const qRaw = normalizeTextParam(url.searchParams.get("q"));
   const deleted = buildDeletedFilter(trash, statusDeleted);
@@ -106,7 +112,7 @@ async function handleGet({ request, env }) {
   // Build WHERE + bind params (new schema)
   const where = [];
   const binds = [];
-  pushTicketFilters(where, binds, { deleted, from, to, type, department, name });
+  pushTicketFilters(where, binds, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
 
   // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
   const ftsQuery = q ? buildFtsQuery(q) : "";
@@ -195,7 +201,7 @@ async function handleGet({ request, env }) {
       // Re-run query with LIKE (no JOIN) under the new schema.
       const whereLike = [];
       const bindsLike = [];
-      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name });
+      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
       pushKeywordLikeFilter(whereLike, bindsLike, q);
       const whereLikeSql = whereLike.length ? `WHERE ${whereLike.join(' AND ')}` : '';
       const sortCol2 = deleted ? 'deleted_at' : 'date';
@@ -298,19 +304,39 @@ export async function onRequestPost({ request, env }) {
     return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: checked.errors }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const { date, issue, department, name, solution, remarks, type } = checked.data;
+  const { date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date, closed_at } = checked.data;
   const nowTs = Date.now();
+  const closedAtValue = status === "已关闭" ? (closed_at || new Date(nowTs).toISOString()) : null;
 
   let result;
   try {
     result = await env.DB
       .prepare(
-        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
+        `INSERT INTO tickets (
+           date, issue, department, name, solution, remarks, type,
+           status, priority, assignee, due_date, closed_at,
+           updated_at, updated_at_ts
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
       )
-      .bind(date, issue, department, name, solution, remarks, type, nowTs)
+      .bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs)
       .run();
   } catch (e) {
+    const msg = String(e?.message || e);
+    if (/no such column/i.test(msg) || /table tickets has no column/i.test(msg)) {
+      try {
+        result = await env.DB
+          .prepare(
+            `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
+          )
+          .bind(date, issue, department, name, solution, remarks, type, nowTs)
+          .run();
+        return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" }, { status: 201, headers: { "cache-control": "no-store" } });
+      } catch (fallbackError) {
+        return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: String(fallbackError?.message || fallbackError) }, { status: 500, headers: { "cache-control": "no-store" } });
+      }
+    }
     return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: String(e?.message || e) }, { status: 500, headers: { "cache-control": "no-store" } });
   }
 

@@ -40,7 +40,10 @@ function getExportContextLabel() {
   if (summary.department) parts.push(`部门-${sanitizeFilenamePart(summary.department)}`);
   if (summary.name) parts.push(`姓名-${sanitizeFilenamePart(summary.name)}`);
   if (summary.keyword) parts.push(`关键词-${sanitizeFilenamePart(summary.keyword)}`);
-  if (summary.status) parts.push(`状态-${sanitizeFilenamePart(summary.status)}`);
+  if (summary.ticketStatus) parts.push(`状态-${sanitizeFilenamePart(summary.ticketStatus)}`);
+  if (summary.assignee) parts.push(`负责人-${sanitizeFilenamePart(summary.assignee)}`);
+  if (summary.priority) parts.push(`优先级-${sanitizeFilenamePart(summary.priority)}`);
+  if (summary.quick) parts.push(`快捷-${sanitizeFilenamePart(summary.quick)}`);
   return parts.filter(Boolean).join('_') || '工单';
 }
 
@@ -74,6 +77,11 @@ function makeExcelRows(records) {
     问题: r.issue || "",
     部门: r.department || "",
     姓名: r.name || "",
+    状态: r.status || "待处理",
+    优先级: r.priority || "普通",
+    负责人: r.assignee || "",
+    截止日期: r.due_date || "",
+    关闭时间: r.closed_at || "",
     处理方法: r.solution || "",
     备注: r.remarks || "",
     类型: r.type || "",
@@ -254,12 +262,15 @@ async function exportSummaryExcel() {
       { 项目: "月份筛选", 值: filterSummary.month || "全部" },
       { 项目: "日期范围", 值: `${filterSummary.from || "-"} ~ ${filterSummary.to || "-"}` },
       { 项目: "类型筛选", 值: filterSummary.type || "全部" },
+      { 项目: "状态筛选", 值: filterSummary.ticketStatus || "全部" },
+      { 项目: "负责人筛选", 值: filterSummary.assignee || "全部" },
+      { 项目: "优先级筛选", 值: filterSummary.priority || "全部" },
       { 项目: "关键字", 值: filterSummary.keyword || "-" }
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "汇总");
 
     const detailRows = records.map((r) => ({
-      日期: r.date, 问题: r.issue, 部门: r.department, 姓名: r.name, 处理方法: r.solution, 备注: r.remarks, 类型: r.type
+      日期: r.date, 问题: r.issue, 部门: r.department, 姓名: r.name, 状态: r.status || "待处理", 优先级: r.priority || "普通", 负责人: r.assignee || "", 截止日期: r.due_date || "", 处理方法: r.solution, 备注: r.remarks, 类型: r.type
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "当前视图明细");
 

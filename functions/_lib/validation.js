@@ -16,6 +16,11 @@ export function validateTicketPayload(input, { requireVersion = false } = {}) {
     solution: cleanText(data.solution, MAX_LONG),
     remarks: cleanText(data.remarks, MAX_LONG),
     type: cleanText(data.type, MAX_SHORT) || "日常故障",
+    status: cleanText(data.status ?? data.ticketStatus, MAX_SHORT) || "待处理",
+    priority: cleanText(data.priority, MAX_SHORT) || "普通",
+    assignee: cleanText(data.assignee, MAX_SHORT),
+    due_date: cleanText(data.due_date ?? data.dueDate, 20),
+    closed_at: cleanText(data.closed_at ?? data.closedAt, 40),
     updated_at: cleanText(data.updated_at ?? data.updatedAt, 40),
     updated_at_ts: Number(data.updated_at_ts ?? data.updatedAtTs ?? data.updatedAtTS ?? data.updated_atTs) || 0,
     force: Boolean(data.force),
@@ -42,6 +47,18 @@ export function validateTicketPayload(input, { requireVersion = false } = {}) {
   }
   if (normalized.remarks.length > MAX_LONG) {
     errors.push({ field: "remarks", message: `备注不能超过 ${MAX_LONG} 个字符` });
+  }
+  if (normalized.status.length > MAX_SHORT) {
+    errors.push({ field: "status", message: `状态不能超过 ${MAX_SHORT} 个字符` });
+  }
+  if (normalized.priority.length > MAX_SHORT) {
+    errors.push({ field: "priority", message: `优先级不能超过 ${MAX_SHORT} 个字符` });
+  }
+  if (normalized.assignee.length > MAX_SHORT) {
+    errors.push({ field: "assignee", message: `负责人不能超过 ${MAX_SHORT} 个字符` });
+  }
+  if (normalized.due_date && !/^\d{4}-\d{2}-\d{2}$/.test(normalized.due_date)) {
+    errors.push({ field: "due_date", message: "截止日期必须是 YYYY-MM-DD" });
   }
   if (requireVersion && !normalized.force && !(normalized.updated_at_ts > 0) && !normalized.updated_at) {
     errors.push({ field: "updated_at_ts", message: "缺少并发版本号，请刷新后重试" });

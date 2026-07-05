@@ -42,7 +42,9 @@ export async function onRequestPut({ params, request, env }) {
     return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: checked.errors }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  const { date, issue, department, name, solution, remarks, type, force } = checked.data;
+  const { date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date, closed_at, force } = checked.data;
+  const nowTs = Date.now();
+  const closedAtValue = status === "已关闭" ? (closed_at || new Date(nowTs).toISOString()) : null;
 
   // Prefer updated_at_ts (integer timestamp) for optimistic concurrency.
   // Keep updated_at string for backward compatibility.
@@ -79,8 +81,6 @@ export async function onRequestPut({ params, request, env }) {
     );
   }
 
-  const nowTs = Date.now();
-
   // Try new schema (with is_deleted + updated_at_ts concurrency)
   try {
     let stmt;
@@ -88,26 +88,29 @@ export async function onRequestPut({ params, request, env }) {
       stmt = env.DB.prepare(
         `UPDATE tickets
          SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             status=?, priority=?, assignee=?, due_date=?, closed_at=?,
              updated_at=CURRENT_TIMESTAMP,
              updated_at_ts=?
          WHERE id=? AND is_deleted=0`
-      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id);
+      ).bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs, id);
     } else if (hasClientTs) {
       stmt = env.DB.prepare(
         `UPDATE tickets
          SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             status=?, priority=?, assignee=?, due_date=?, closed_at=?,
              updated_at=CURRENT_TIMESTAMP,
              updated_at_ts=?
          WHERE id=? AND is_deleted=0 AND updated_at_ts=?`
-      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id, clientUpdatedAtTs);
+      ).bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs, id, clientUpdatedAtTs);
     } else {
       stmt = env.DB.prepare(
         `UPDATE tickets
          SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?,
+             status=?, priority=?, assignee=?, due_date=?, closed_at=?,
              updated_at=CURRENT_TIMESTAMP,
              updated_at_ts=?
          WHERE id=? AND is_deleted=0 AND updated_at=?`
-      ).bind(date, issue, department, name, solution, remarks, type, nowTs, id, clientUpdatedAt);
+      ).bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs, id, clientUpdatedAt);
     }
 
     const r = await stmt.run();

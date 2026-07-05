@@ -2423,3 +2423,248 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== M2 Workbench controls ===== */
+.workbench-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.quick-filter-group,
+.workbench-tools,
+.batch-edit-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-filter {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+}
+
+.quick-filter.active {
+  border-color: #b9cdfb;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.density-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 800;
+}
+
+.density-switch select {
+  width: auto;
+  min-height: 34px;
+}
+
+.column-settings {
+  position: relative;
+}
+
+.column-settings > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  color: #253247;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.column-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.column-settings-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.column-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.batch-edit-panel {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce4ee;
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.batch-edit-title {
+  color: #162033;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.batch-edit-panel label {
+  margin: 0;
+}
+
+.batch-edit-panel select,
+.batch-edit-panel input {
+  width: auto;
+  min-width: 150px;
+  min-height: 34px;
+}
+
+#recordTable {
+  min-width: 1320px;
+}
+
+#recordTable.table-compact th,
+#recordTable.table-compact td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.ticket-status-cell,
+.ticket-priority-cell,
+.ticket-assignee-cell,
+.ticket-due-cell {
+  white-space: nowrap;
+}
+
+.ticket-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 118px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid #d6e0ec;
+  border-radius: 999px;
+  background: #fff;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-status-待处理 {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #b45309;
+}
+
+.ticket-status-处理中 {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ticket-status-已解决,
+.ticket-status-已关闭 {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.ticket-priority-紧急,
+.ticket-priority-高 {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.ticket-priority-低 {
+  border-color: #d9e4f2;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.ticket-due-cell .is-overdue {
+  color: var(--danger);
+  font-weight: 900;
+}
+
+.ticket-detail-panel {
+  width: min(520px, calc(100vw - 24px));
+  height: 100%;
+  max-height: none;
+  margin-left: auto;
+  border-radius: 0;
+}
+
+#ticketDetailModal.ticket-modal-mask {
+  justify-content: flex-end;
+  padding: 0;
+}
+
+#ticketDetailModal .ticket-modal-body {
+  overflow: auto;
+}
+
+#ticketDetailModal .ticket-modal-actions {
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 960px) {
+  .workbench-controls,
+  .batch-edit-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workbench-tools,
+  .quick-filter-group,
+  .batch-edit-panel {
+    width: 100%;
+  }
+
+  .batch-edit-panel select,
+  .batch-edit-panel input,
+  .batch-edit-panel button {
+    width: 100%;
+  }
+
+  .column-settings-panel {
+    left: 0;
+    right: auto;
+  }
+}

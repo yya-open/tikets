@@ -8,9 +8,10 @@ function tableText(value, fallback = "未填写") {
   return v || fallback;
 }
 
-function appendTextCell(row, className, value, fallback = "未填写") {
+function appendTextCell(row, className, value, fallback = "未填写", columnKey = "") {
   const cell = row.insertCell();
   cell.className = className;
+  if (columnKey) cell.dataset.column = columnKey;
   const text = document.createElement("span");
   text.className = value ? "table-cell-text" : "table-cell-empty";
   text.textContent = tableText(value, fallback);
@@ -21,6 +22,7 @@ function appendTextCell(row, className, value, fallback = "未填写") {
 function appendIssueCell(row, record) {
   const cell = row.insertCell();
   cell.className = "ticket-issue-cell";
+  cell.dataset.column = "issue";
   const title = document.createElement("div");
   title.className = "ticket-issue-title";
   title.textContent = tableText(record.issue, "未填写问题描述");
@@ -35,11 +37,98 @@ function appendIssueCell(row, record) {
 function appendTypeCell(row, type) {
   const cell = row.insertCell();
   cell.className = "ticket-type-cell";
+  cell.dataset.column = "type";
   const pill = document.createElement("span");
   pill.className = "ticket-type-pill";
   pill.textContent = tableText(type, "未分类");
   cell.appendChild(pill);
   return cell;
+}
+
+const WORKFLOW_STATUSES = ["待处理", "处理中", "已解决", "已关闭"];
+const WORKFLOW_PRIORITIES = ["紧急", "高", "普通", "低"];
+const TABLE_COLUMNS = [
+  { key: "date", label: "日期", required: true },
+  { key: "issue", label: "问题", required: true },
+  { key: "status", label: "状态" },
+  { key: "priority", label: "优先级" },
+  { key: "assignee", label: "负责人" },
+  { key: "due_date", label: "截止日期" },
+  { key: "department", label: "部门" },
+  { key: "name", label: "姓名" },
+  { key: "solution", label: "处理方法" },
+  { key: "remarks", label: "备注" },
+  { key: "type", label: "类型" },
+  { key: "actions", label: "操作", required: true },
+];
+
+function readJsonSetting(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonSetting(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function getVisibleColumns() {
+  const saved = readJsonSetting("ticket_visible_columns_v1", null);
+  const visible = new Set(Array.isArray(saved) ? saved : TABLE_COLUMNS.map((c) => c.key));
+  TABLE_COLUMNS.forEach((col) => { if (col.required) visible.add(col.key); });
+  return visible;
+}
+
+function setColumnVisibility(key, visible) {
+  const cols = getVisibleColumns();
+  if (visible) cols.add(key);
+  else cols.delete(key);
+  TABLE_COLUMNS.forEach((col) => { if (col.required) cols.add(col.key); });
+  writeJsonSetting("ticket_visible_columns_v1", Array.from(cols));
+}
+
+function applyColumnVisibility(root = document) {
+  const visible = getVisibleColumns();
+  root.querySelectorAll("[data-column]").forEach((el) => {
+    const key = el.getAttribute("data-column");
+    el.hidden = key && !visible.has(key);
+  });
+}
+
+function appendBadgeCell(row, key, value, fallback) {
+  const cell = row.insertCell();
+  cell.className = `ticket-${key}-cell`;
+  cell.dataset.column = key;
+  const badge = document.createElement("span");
+  badge.className = `ticket-badge ticket-${key}-badge ticket-${key}-${String(value || fallback || "").replace(/\s+/g, "-")}`;
+  badge.textContent = tableText(value, fallback);
+  cell.appendChild(badge);
+  return cell;
+}
+
+function appendDueCell(row, record) {
+  const cell = row.insertCell();
+  cell.className = "ticket-due-cell";
+  cell.dataset.column = "due_date";
+  const due = tableText(record.due_date, "未设置");
+  const text = document.createElement("span");
+  text.className = "table-cell-text";
+  text.textContent = due;
+  if (isTicketOverdue(record)) text.classList.add("is-overdue");
+  cell.appendChild(text);
+  return cell;
+}
+
+function isTicketOverdue(record) {
+  const due = String(record?.due_date || "").trim();
+  const status = String(record?.status || "待处理").trim();
+  if (!due || status === "已解决" || status === "已关闭") return false;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return due < today;
 }
 
 function appendActionButton(container, text, className, action, id) {
@@ -75,11 +164,15 @@ function renderTicketDetailHtml(record) {
       <span class="ticket-chip">ID：${escapeHtml(String(record.id || '-'))}</span>
       <span class="ticket-chip ${isTrash ? 'ticket-detail-status-trash' : 'ticket-detail-status-active'}">${isTrash ? '回收站' : '正常工单'}</span>
       <span class="ticket-chip">类型：${escapeHtml(record.type || '未分类')}</span>
+      <span class="ticket-chip">状态：${escapeHtml(record.status || '待处理')}</span>
+      <span class="ticket-chip">优先级：${escapeHtml(record.priority || '普通')}</span>
       <span class="ticket-chip">日期：${escapeHtml(record.date || '-')}</span>
     </div>
     <div class="ticket-detail-highlight">
       <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">部门</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.department)}</div></div>
       <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">姓名</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.name)}</div></div>
+      <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">负责人</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.assignee)}</div></div>
+      <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">截止日期</div><div class="ticket-detail-stat-value">${escapeDetailValue(record.due_date)}</div></div>
       <div class="ticket-detail-stat"><div class="ticket-detail-stat-label">最后更新时间</div><div class="ticket-detail-stat-value">${escapeDetailValue(formatISOToLocal(record.updated_at || ''))}</div></div>
     </div>
     <div class="ticket-detail-sections">
@@ -605,6 +698,127 @@ function bindBatchToolbarInteractions() {
   syncBatchToolbar();
 }
 
+function bindWorkbenchControls() {
+  const quickRoot = document.getElementById("quickFilterGroup");
+  if (quickRoot && quickRoot.dataset.bound !== "1") {
+    quickRoot.dataset.bound = "1";
+    const savedQuick = (() => { try { return localStorage.getItem("ticket_quick_filter_v1") || "all"; } catch { return "all"; } })();
+    quickRoot.dataset.activeFilter = savedQuick;
+    quickRoot.querySelectorAll("[data-quick-filter]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-quick-filter") === savedQuick);
+    });
+    quickRoot.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-quick-filter]") : null;
+      if (!btn) return;
+      const key = btn.getAttribute("data-quick-filter") || "all";
+      quickRoot.dataset.activeFilter = key;
+      try { localStorage.setItem("ticket_quick_filter_v1", key); } catch {}
+      quickRoot.querySelectorAll("[data-quick-filter]").forEach((item) => item.classList.toggle("active", item === btn));
+      window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
+      renderTable({ resetPage: true });
+    });
+  }
+
+  const density = document.getElementById("tableDensitySelect");
+  if (density && density.dataset.bound !== "1") {
+    density.dataset.bound = "1";
+    try { density.value = localStorage.getItem("ticket_table_density_v1") || "comfortable"; } catch {}
+    applyTableDensity(density.value);
+    density.addEventListener("change", () => {
+      applyTableDensity(density.value);
+      try { localStorage.setItem("ticket_table_density_v1", density.value); } catch {}
+    });
+  }
+
+  renderColumnSettings();
+}
+
+function applyTableDensity(value) {
+  const table = document.getElementById("recordTable");
+  if (!table) return;
+  table.classList.toggle("table-compact", value === "compact");
+}
+
+function renderColumnSettings() {
+  const panel = document.getElementById("columnSettingsPanel");
+  if (!panel || panel.dataset.rendered === "1") {
+    applyColumnVisibility(document);
+    return;
+  }
+  panel.dataset.rendered = "1";
+  panel.innerHTML = "";
+  const visible = getVisibleColumns();
+  TABLE_COLUMNS.forEach((col) => {
+    const label = document.createElement("label");
+    label.className = "column-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = visible.has(col.key);
+    input.disabled = !!col.required;
+    input.dataset.columnToggle = col.key;
+    input.addEventListener("change", () => {
+      setColumnVisibility(col.key, input.checked);
+      applyColumnVisibility(document);
+    });
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(col.label));
+    panel.appendChild(label);
+  });
+  applyColumnVisibility(document);
+}
+
+async function applyBatchWorkflowUpdate() {
+  const selected = getSelectedRecords();
+  if (!selected.length) return showToast("请先选择要批量更新的工单。", "warning");
+  const status = String(document.getElementById("batchStatusSelect")?.value || "").trim();
+  const assigneeRaw = document.getElementById("batchAssigneeInput")?.value;
+  const assignee = String(assigneeRaw || "").trim();
+  if (!status && assigneeRaw === "") return showToast("请选择状态或填写负责人。", "warning");
+
+  const ok = await showConfirm({
+    title: "批量更新",
+    message: `确认更新选中的 ${selected.length} 条工单吗？`,
+    confirmText: "应用更新",
+    cancelText: "取消",
+    danger: false,
+  });
+  if (!ok) return;
+
+  let success = 0;
+  for (const item of selected) {
+    const payload = {
+      ...item,
+      status: status || item.status || "待处理",
+      assignee: assigneeRaw === "" ? (item.assignee || "") : assignee,
+      updated_at: item.updated_at || "",
+      updated_at_ts: Number(item.updated_at_ts || 0) || 0,
+      force: true,
+    };
+    try {
+      let res = await window.TicketService.updateTicket(item.id, payload);
+      if (res.status === 409) {
+        res = await window.TicketService.updateTicket(item.id, { ...payload, force: true });
+      }
+      if (!res.ok) throw new Error(`batch update failed: ${res.status}`);
+      success += 1;
+    } catch (e) {
+      if (isNoKeyError(e)) return;
+      console.error(e);
+    }
+  }
+  selectedTicketIds.clear();
+  window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
+  await reloadAndRender();
+  showToast(`批量更新完成：成功 ${success} / ${selected.length} 条。`, success === selected.length ? "success" : "warning");
+}
+
+function bindBatchWorkflowControls() {
+  const btn = document.getElementById("btnBatchApplyWorkflow");
+  if (!btn || btn.dataset.bound === "1") return;
+  btn.dataset.bound = "1";
+  btn.addEventListener("click", applyBatchWorkflowUpdate);
+}
+
 async function deleteRecord(id) {
   const ok = await showConfirm({
     title: "确认删除",
@@ -672,10 +886,18 @@ async function hardDeleteRecord(id) {
 }
 
     function clearFilters() {
-      ["filterFrom", "filterTo", "filterType", "filterDepartment", "filterName", "filterKeyword", "filterStatus"].forEach((id) => {
+      ["filterFrom", "filterTo", "filterType", "filterDepartment", "filterName", "filterKeyword", "filterTicketStatus", "filterAssignee", "filterPriority"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
       });
+      const quickRoot = document.getElementById("quickFilterGroup");
+      if (quickRoot) {
+        quickRoot.dataset.activeFilter = "all";
+        quickRoot.querySelectorAll("[data-quick-filter]").forEach((btn) => {
+          btn.classList.toggle("active", btn.getAttribute("data-quick-filter") === "all");
+        });
+        try { localStorage.setItem("ticket_quick_filter_v1", "all"); } catch {}
+      }
       // 保留年份/月视图状态，仅清空高级筛选
       window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
       renderTable({ resetPage: true });
@@ -687,6 +909,8 @@ async function renderTable({ resetPage = true } = {}) {
   bindMonthViewInteractions();
   bindPaginationInteractions();
   bindBatchToolbarInteractions();
+  bindWorkbenchControls();
+  bindBatchWorkflowControls();
   tbody.innerHTML = "";
 
   // 若筛选条件/视图变化，则清空游标分页状态
@@ -713,7 +937,7 @@ async function renderTable({ resetPage = true } = {}) {
   if (pageRecords.length === 0) {
     const row = tbody.insertRow();
     const cell = row.insertCell(0);
-    cell.colSpan = 9;
+    cell.colSpan = 12;
     cell.className = "table-empty-cell";
     const empty = document.createElement("div");
     empty.className = "table-empty-state";
@@ -743,15 +967,20 @@ async function renderTable({ resetPage = true } = {}) {
       checkbox.checked = selectedTicketIds.has(Number(r.id));
       selectCell.appendChild(checkbox);
       row.classList.toggle('row-selected', checkbox.checked);
-      appendTextCell(row, "ticket-date-cell", r.date, "未设置");
+      appendTextCell(row, "ticket-date-cell", r.date, "未设置", "date");
       appendIssueCell(row, r);
-      appendTextCell(row, "ticket-org-cell", r.department);
-      appendTextCell(row, "ticket-person-cell", r.name);
-      appendTextCell(row, "ticket-long-cell", r.solution);
-      appendTextCell(row, "ticket-long-cell", r.remarks);
+      appendBadgeCell(row, "status", r.status, "待处理");
+      appendBadgeCell(row, "priority", r.priority, "普通");
+      appendTextCell(row, "ticket-assignee-cell", r.assignee, "未指派", "assignee");
+      appendDueCell(row, r);
+      appendTextCell(row, "ticket-org-cell", r.department, "未填写", "department");
+      appendTextCell(row, "ticket-person-cell", r.name, "未填写", "name");
+      appendTextCell(row, "ticket-long-cell", r.solution, "未填写", "solution");
+      appendTextCell(row, "ticket-long-cell", r.remarks, "未填写", "remarks");
       appendTypeCell(row, r.type);
-      const actionCell = row.insertCell(8);
+      const actionCell = row.insertCell();
       actionCell.className = "ticket-action-cell";
+      actionCell.dataset.column = "actions";
       const actionStack = document.createElement("div");
       actionStack.className = "action-stack table-action-stack";
       actionCell.appendChild(actionStack);
@@ -779,6 +1008,7 @@ async function renderTable({ resetPage = true } = {}) {
   refreshMonthButtons();
   renderPagination(totalItems);
   syncBatchToolbar();
+  applyColumnVisibility(document);
 }
 
 function renderPagination(totalItems) {

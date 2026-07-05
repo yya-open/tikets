@@ -53,6 +53,11 @@ export async function onRequestPut({ request, env }) {
       solution TEXT,
       remarks TEXT,
       type TEXT,
+      status TEXT DEFAULT '待处理',
+      priority TEXT DEFAULT '普通',
+      assignee TEXT,
+      due_date TEXT,
+      closed_at TEXT,
       updated_at TEXT DEFAULT (datetime('now')),
       updated_at_ts INTEGER DEFAULT 0,
       is_deleted INTEGER DEFAULT 0,
@@ -63,16 +68,29 @@ export async function onRequestPut({ request, env }) {
   await env.DB.prepare("DELETE FROM tickets_stage").run();
 
   const insertStage = env.DB.prepare(
-    `INSERT INTO tickets_stage (id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?, ?, ?)`
+    `INSERT INTO tickets_stage (
+       id, date, issue, department, name, solution, remarks, type,
+       status, priority, assignee, due_date, closed_at,
+       updated_at, updated_at_ts, is_deleted, deleted_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''), CURRENT_TIMESTAMP), ?, ?, ?)`
   );
   for (let i = 0; i < normalized.all.length; i += 100) {
-    const chunk = normalized.all.slice(i, i + 100).map((row) => insertStage.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.updated_at, row.updated_at_ts || Date.now(), row.is_deleted, row.deleted_at || null));
+    const chunk = normalized.all.slice(i, i + 100).map((row) => insertStage.bind(row.id, row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.status, row.priority, row.assignee, row.due_date || null, row.closed_at || null, row.updated_at, row.updated_at_ts || Date.now(), row.is_deleted, row.deleted_at || null));
     if (chunk.length) await env.DB.batch(chunk);
   }
 
   await env.DB.prepare("DELETE FROM tickets").run();
-  await env.DB.prepare(`INSERT INTO tickets (id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at) SELECT id, date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts, is_deleted, deleted_at FROM tickets_stage ORDER BY id`).run();
+  await env.DB.prepare(`INSERT INTO tickets (
+    id, date, issue, department, name, solution, remarks, type,
+    status, priority, assignee, due_date, closed_at,
+    updated_at, updated_at_ts, is_deleted, deleted_at
+  )
+  SELECT
+    id, date, issue, department, name, solution, remarks, type,
+    status, priority, assignee, due_date, closed_at,
+    updated_at, updated_at_ts, is_deleted, deleted_at
+  FROM tickets_stage ORDER BY id`).run();
   await tryRebuildFTS(env);
 
   return jsonResponse({ ok: true, inserted: normalized.all.length, active: normalized.active.length, trash: normalized.trash.length, mode: "replace_all_via_stage" }, { headers: { "cache-control": "no-store" } });

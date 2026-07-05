@@ -41,6 +41,12 @@ async function handleGet({ request, env }) {
   const type = normalizeTextParam(url.searchParams.get("type"));
   const department = normalizeFilterTextParam(url.searchParams.get("department"));
   const name = normalizeFilterTextParam(url.searchParams.get("name"));
+  const ticketStatus = normalizeFilterTextParam(url.searchParams.get("ticketStatus") || url.searchParams.get("workStatus"));
+  const assignee = normalizeFilterTextParam(url.searchParams.get("assignee"));
+  const priority = normalizeFilterTextParam(url.searchParams.get("priority"));
+  const quickRaw = normalizeFilterTextParam(url.searchParams.get("quick"), 24);
+  const quick = ["open", "overdue", "today", "unassigned"].includes(quickRaw) ? quickRaw : "";
+  const quickDate = normalizeDateParam(url.searchParams.get("quickDate")) || new Date().toISOString().slice(0, 10);
   const statusDeleted = normalizeStatusDeletedParam(url.searchParams.get("status"));
   const qRaw = normalizeTextParam(url.searchParams.get("q"));
   const deleted = buildDeletedFilter(trash, statusDeleted);
@@ -53,7 +59,7 @@ async function handleGet({ request, env }) {
   // filtered condition
   const where = [];
   const binds = [];
-  pushTicketFilters(where, binds, { deleted, from, to, type, department, name });
+  pushTicketFilters(where, binds, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
 
   const ftsQuery = q ? buildFtsQuery(q) : "";
   const wantFts = Boolean(ftsQuery);
@@ -88,6 +94,22 @@ async function handleGet({ request, env }) {
     ORDER BY k ASC
   `;
 
+  const statusSql = `
+    SELECT COALESCE(NULLIF(TRIM(tickets.status),''),'待处理') as k, COUNT(*) as c
+    ${filteredFromSql}
+    ${whereSql}
+    GROUP BY k
+    ORDER BY c DESC, k ASC
+  `;
+
+  const assigneeSql = `
+    SELECT COALESCE(NULLIF(TRIM(tickets.assignee),''),'未指派') as k, COUNT(*) as c
+    ${filteredFromSql}
+    ${whereSql}
+    GROUP BY k
+    ORDER BY c DESC, k ASC
+  `;
+
   try {
     const allRow = await env.DB.prepare(countAllSql).bind(...baseBinds).first();
     const filteredRow = await env.DB.prepare(countFilteredSql).bind(...binds).first();
@@ -97,6 +119,8 @@ async function handleGet({ request, env }) {
 
     const typeRes = await env.DB.prepare(typeSql).bind(...binds).all();
     const monthRes = await env.DB.prepare(monthSql).bind(...binds).all();
+    const statusRes = await env.DB.prepare(statusSql).bind(...binds).all();
+    const assigneeRes = await env.DB.prepare(assigneeSql).bind(...binds).all();
 
     const type_counts = {};
     for (const r of (typeRes?.results ?? [])) {
@@ -108,6 +132,14 @@ async function handleGet({ request, env }) {
       if (!r.k) continue;
       month_counts[String(r.k)] = Number(r.c) || 0;
     }
+    const status_counts = {};
+    for (const r of (statusRes?.results ?? [])) {
+      status_counts[String(r.k)] = Number(r.c) || 0;
+    }
+    const assignee_counts = {};
+    for (const r of (assigneeRes?.results ?? [])) {
+      assignee_counts[String(r.k)] = Number(r.c) || 0;
+    }
 
     return await respondCachedJson(
       request,
@@ -117,6 +149,8 @@ async function handleGet({ request, env }) {
         total_filtered,
         type_counts,
         month_counts,
+        status_counts,
+        assignee_counts,
       },
       { maxAge: 60 }
     );
@@ -126,7 +160,7 @@ async function handleGet({ request, env }) {
       // FTS not available: rerun under new schema with LIKE.
       const whereLike = [];
       const bindsLike = [];
-      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name });
+      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
       pushKeywordLikeFilter(whereLike, bindsLike, q);
       const whereLikeSql = `WHERE ${whereLike.join(' AND ')}`;
       const countFilteredSqlLike = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
@@ -154,7 +188,7 @@ async function handleGet({ request, env }) {
       for (const r of (typeRes?.results ?? [])) { type_counts[String(r.k)] = Number(r.c) || 0; }
       const month_counts = {};
       for (const r of (monthRes?.results ?? [])) { if (!r.k) continue; month_counts[String(r.k)] = Number(r.c) || 0; }
-      return await respondCachedJson(request, { trash: deleted ? 1 : 0, total_all, total_filtered, type_counts, month_counts }, { maxAge: 60 });
+      return await respondCachedJson(request, { trash: deleted ? 1 : 0, total_all, total_filtered, type_counts, month_counts, status_counts: {}, assignee_counts: {} }, { maxAge: 60 });
     }
 
     // old schema fallback (no is_deleted)

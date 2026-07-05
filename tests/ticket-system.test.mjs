@@ -38,6 +38,11 @@ test("ticket query helpers normalize filters and build ticket predicates", () =>
     type: "VPN",
     department: "IT",
     name: "Alice",
+    ticketStatus: "处理中",
+    assignee: "Bob",
+    priority: "高",
+    quick: "open",
+    quickDate: "2026-05-10",
   });
 
   assert.deepEqual(where, [
@@ -47,8 +52,12 @@ test("ticket query helpers normalize filters and build ticket predicates", () =>
     "tickets.type = ?",
     "tickets.department LIKE ?",
     "tickets.name LIKE ?",
+    "tickets.status = ?",
+    "tickets.assignee LIKE ?",
+    "tickets.priority = ?",
+    "COALESCE(NULLIF(TRIM(tickets.status),''),'待处理') IN ('待处理','处理中')",
   ]);
-  assert.deepEqual(binds, [0, "2026-01-01", "2026-12-31", "VPN", "%IT%", "%Alice%"]);
+  assert.deepEqual(binds, [0, "2026-01-01", "2026-12-31", "VPN", "%IT%", "%Alice%", "处理中", "%Bob%", "高"]);
 });
 
 test("keyword helpers build safe LIKE and FTS queries", () => {
@@ -80,10 +89,16 @@ test("ticket validation normalizes valid payloads and reports invalid records", 
   assert.equal(valid.ok, true);
   assert.equal(valid.data.issue, "Cannot login");
   assert.equal(valid.data.type, "日常故障");
+  assert.equal(valid.data.status, "待处理");
+  assert.equal(valid.data.priority, "普通");
 
   const invalid = validateTicketPayload({ date: "2026/05/10", issue: "" }, { requireVersion: true });
   assert.equal(invalid.ok, false);
   assert.deepEqual(invalid.errors.map((e) => e.field), ["date", "issue", "updated_at_ts"]);
+
+  const invalidDueDate = validateTicketPayload({ date: "2026-05-10", issue: "x", due_date: "2026/05/11" });
+  assert.equal(invalidDueDate.ok, false);
+  assert.deepEqual(invalidDueDate.errors.map((e) => e.field), ["due_date"]);
 });
 
 test("import diff protects newer server records", () => {
@@ -132,6 +147,12 @@ test("main page loads ticket filters before query runtime", () => {
   assert.ok(filtersIndex > -1, "ticket-filters.js should be loaded by index.html");
   assert.ok(runtimeIndex > -1, "ticket-query-runtime.js should be loaded by index.html");
   assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
+  assert.match(html, /id="quickFilterGroup"/);
+  assert.match(html, /id="tableDensitySelect"/);
+  assert.match(html, /id="columnSettingsPanel"/);
+  assert.match(html, /id="btnBatchApplyWorkflow"/);
+  assert.match(html, /data-column="status"/);
+  assert.match(html, /data-column="assignee"/);
 });
 
 test("pages load auth and api through the ES module core entry", () => {

@@ -27,11 +27,11 @@
 <script defer src="/assets/js/ticket-form-modal.js"></script>
 <script defer src="/assets/js/ticket-export-tools.js"></script>
 <script defer src="/assets/app.js"></script>
-<script defer src="/assets/js/ticket-table-view.js?v=20260703-table"></script>
+<script defer src="/assets/js/ticket-table-view.js?v=20260705-m2"></script>
 <script defer src="/assets/js/ticket-stats-view.js"></script>
 <script defer src="/assets/js/ticket-fold-state.js"></script>
 <script defer src="/assets/js/ticket-bindings.js"></script>
-<link rel="stylesheet" href="/assets/app.css?v=20260703-table"/>
+<link rel="stylesheet" href="/assets/app.css?v=20260705-m2"/>
 
 </head>
 <body>
@@ -138,6 +138,30 @@
 </select>
 </div>
 <div>
+<label for="filterTicketStatus">状态</label>
+<select autocomplete="off" id="filterTicketStatus" name="filterTicketStatus">
+<option value="">全部状态</option>
+<option>待处理</option>
+<option>处理中</option>
+<option>已解决</option>
+<option>已关闭</option>
+</select>
+</div>
+<div>
+<label for="filterPriority">优先级</label>
+<select autocomplete="off" id="filterPriority" name="filterPriority">
+<option value="">全部优先级</option>
+<option>紧急</option>
+<option>高</option>
+<option>普通</option>
+<option>低</option>
+</select>
+</div>
+<div>
+<label for="filterAssignee">负责人</label>
+<input autocomplete="off" id="filterAssignee" name="filterAssignee" placeholder="输入负责人…" type="text"/>
+</div>
+<div>
 <label for="filterKeyword">关键字（问题 / 部门 / 姓名等）</label>
 <input autocomplete="off" id="filterKeyword" name="filterKeyword" placeholder="输入关键字… 例如：打印机 / 张三" type="text"/>
 </div>
@@ -194,6 +218,43 @@
 </summary>
 <div class="fold-body">
 
+<div class="workbench-controls" aria-label="工单工作台控制">
+<div class="quick-filter-group" id="quickFilterGroup" aria-label="快捷筛选">
+<button type="button" class="quick-filter active" data-quick-filter="all">全部</button>
+<button type="button" class="quick-filter" data-quick-filter="open">未完成</button>
+<button type="button" class="quick-filter" data-quick-filter="overdue">已超期</button>
+<button type="button" class="quick-filter" data-quick-filter="today">今日新增</button>
+<button type="button" class="quick-filter" data-quick-filter="unassigned">未指派</button>
+</div>
+<div class="workbench-tools">
+<label class="density-switch" for="tableDensitySelect">密度
+<select id="tableDensitySelect" name="tableDensitySelect">
+<option value="comfortable">舒适</option>
+<option value="compact">紧凑</option>
+</select>
+</label>
+<details class="column-settings" id="columnSettings">
+<summary>列设置</summary>
+<div class="column-settings-panel" id="columnSettingsPanel" aria-label="列显示设置"></div>
+</details>
+</div>
+</div>
+
+<div class="batch-edit-panel" id="batchEditPanel">
+<div class="batch-edit-title">批量更新</div>
+<label for="batchStatusSelect">状态</label>
+<select id="batchStatusSelect" name="batchStatusSelect">
+<option value="">不修改</option>
+<option>待处理</option>
+<option>处理中</option>
+<option>已解决</option>
+<option>已关闭</option>
+</select>
+<label for="batchAssigneeInput">负责人</label>
+<input id="batchAssigneeInput" name="batchAssigneeInput" autocomplete="off" placeholder="不修改" type="text"/>
+<button type="button" class="secondary" id="btnBatchApplyWorkflow">应用到选中</button>
+</div>
+
 <div aria-label="月份视图" class="month-panel">
 <div class="month-panel-head">
 <div>
@@ -229,14 +290,18 @@
 <thead>
 <tr>
 <th class="sel-col"><input type="checkbox" id="selectAllRowsHead" aria-label="全选本页工单" /></th>
-<th>日期</th>
-<th>问题</th>
-<th>部门</th>
-<th>姓名</th>
-<th>处理方法</th>
-<th>备注</th>
-<th>类型</th>
-<th>操作</th>
+<th data-column="date">日期</th>
+<th data-column="issue">问题</th>
+<th data-column="status">状态</th>
+<th data-column="priority">优先级</th>
+<th data-column="assignee">负责人</th>
+<th data-column="due_date">截止日期</th>
+<th data-column="department">部门</th>
+<th data-column="name">姓名</th>
+<th data-column="solution">处理方法</th>
+<th data-column="remarks">备注</th>
+<th data-column="type">类型</th>
+<th data-column="actions">操作</th>
 </tr>
 </thead>
 <tbody></tbody>
@@ -310,6 +375,36 @@
 <label for="name">姓名</label>
 <input aria-describedby="nameError" autocomplete="name" id="name" name="name" placeholder="例如：张三…" type="text"/>
 <div aria-live="polite" class="field-error" id="nameError"></div>
+</div>
+<div class="form-field">
+<label for="status">状态</label>
+<select aria-describedby="statusError" autocomplete="off" id="status" name="status">
+<option>待处理</option>
+<option>处理中</option>
+<option>已解决</option>
+<option>已关闭</option>
+</select>
+<div aria-live="polite" class="field-error" id="statusError"></div>
+</div>
+<div class="form-field">
+<label for="priority">优先级</label>
+<select aria-describedby="priorityError" autocomplete="off" id="priority" name="priority">
+<option>紧急</option>
+<option>高</option>
+<option selected>普通</option>
+<option>低</option>
+</select>
+<div aria-live="polite" class="field-error" id="priorityError"></div>
+</div>
+<div class="form-field">
+<label for="assignee">负责人</label>
+<input aria-describedby="assigneeError" autocomplete="off" id="assignee" name="assignee" placeholder="例如：李四…" type="text"/>
+<div aria-live="polite" class="field-error" id="assigneeError"></div>
+</div>
+<div class="form-field">
+<label for="due_date">截止日期</label>
+<input aria-describedby="due_dateError" autocomplete="off" id="due_date" name="due_date" type="date"/>
+<div aria-live="polite" class="field-error" id="due_dateError"></div>
 </div>
 <div class="form-field full-field">
 <label for="solution">处理方法</label>

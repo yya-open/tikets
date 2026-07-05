@@ -10,7 +10,11 @@
     name: "姓名",
     solution: "处理方法",
     remarks: "备注",
-    type: "类型"
+    type: "类型",
+    status: "状态",
+    priority: "优先级",
+    assignee: "负责人",
+    due_date: "截止日期"
   };
 
   function todayISO() {
@@ -34,7 +38,12 @@
       name: sanitizeText(source.name),
       solution: sanitizeText(source.solution),
       remarks: sanitizeText(source.remarks),
-      type: sanitizeText(source.type)
+      type: sanitizeText(source.type),
+      status: sanitizeText(source.status) || "待处理",
+      priority: sanitizeText(source.priority) || "普通",
+      assignee: sanitizeText(source.assignee),
+      due_date: sanitizeText(source.due_date || source.dueDate),
+      closed_at: sanitizeText(source.closed_at || source.closedAt)
     };
   }
 
@@ -51,6 +60,9 @@
       fieldErrors.date = "日期格式必须为 YYYY-MM-DD";
     } else if (data.date && !allowFutureDate && data.date > todayISO()) {
       fieldErrors.date = "日期不能晚于当天";
+    }
+    if (data.due_date && !/^\d{4}-\d{2}-\d{2}$/.test(data.due_date)) {
+      fieldErrors.due_date = "截止日期格式必须为 YYYY-MM-DD";
     }
 
     Object.entries(limits).forEach(([field, max]) => {
@@ -94,7 +106,16 @@
   function validateSingleField(field) {
     const input = document.getElementById(field);
     if (!input) return true;
-    const checked = validateTicketForm({ [field]: input.value, date: field === 'date' ? input.value : document.getElementById('date')?.value, issue: field === 'issue' ? input.value : document.getElementById('issue')?.value, type: field === 'type' ? input.value : document.getElementById('type')?.value });
+    const checked = validateTicketForm({
+      [field]: input.value,
+      date: field === 'date' ? input.value : document.getElementById('date')?.value,
+      issue: field === 'issue' ? input.value : document.getElementById('issue')?.value,
+      type: field === 'type' ? input.value : document.getElementById('type')?.value,
+      status: field === 'status' ? input.value : document.getElementById('status')?.value,
+      priority: field === 'priority' ? input.value : document.getElementById('priority')?.value,
+      assignee: field === 'assignee' ? input.value : document.getElementById('assignee')?.value,
+      due_date: field === 'due_date' ? input.value : document.getElementById('due_date')?.value
+    });
     setFieldError(field, checked.fieldErrors[field] || '');
     return !checked.fieldErrors[field];
   }

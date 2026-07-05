@@ -100,7 +100,10 @@ window.TicketQueryState = window.TicketQueryState || {
       department: filters.department || '',
       name: filters.name || '',
       keyword: filters.q || '',
-      status: filters.status || '',
+      ticketStatus: filters.ticketStatus || '',
+      assignee: filters.assignee || '',
+      priority: filters.priority || '',
+      quick: filters.quick || '',
       trash: Number(filters.trash || 0) || 0,
     };
   }

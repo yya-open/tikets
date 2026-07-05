@@ -53,6 +53,11 @@ export function normalizeImportRecord(record, forcedDeleted = null) {
     solution: String(obj.solution ?? obj.method ?? obj.处理方法 ?? obj.fix ?? ''),
     remarks: String(obj.remarks ?? obj.remark ?? obj.备注 ?? obj.note ?? ''),
     type: String(obj.type ?? obj.类型 ?? obj.category ?? ''),
+    status: String(obj.status ?? obj.ticketStatus ?? obj.状态 ?? '待处理').trim() || '待处理',
+    priority: String(obj.priority ?? obj.优先级 ?? '普通').trim() || '普通',
+    assignee: String(obj.assignee ?? obj.负责人 ?? obj.owner ?? ''),
+    due_date: String(obj.due_date ?? obj.dueDate ?? obj.截止日期 ?? ''),
+    closed_at: String(obj.closed_at ?? obj.closedAt ?? obj.关闭时间 ?? ''),
     updated_at,
     updated_at_ts,
     has_version: updated_at_ts > 0 || !!updated_at,
@@ -79,7 +84,7 @@ export async function getTicketColumns(db) {
 
 export async function assertImportSchemaReady(db) {
   const cols = await getTicketColumns(db);
-  const required = ['id', 'date', 'issue', 'department', 'name', 'solution', 'remarks', 'type', 'updated_at', 'updated_at_ts', 'is_deleted', 'deleted_at'];
+  const required = ['id', 'date', 'issue', 'department', 'name', 'solution', 'remarks', 'type', 'status', 'priority', 'assignee', 'due_date', 'closed_at', 'updated_at', 'updated_at_ts', 'is_deleted', 'deleted_at'];
   const missing = required.filter((name) => !cols.has(name));
   return { ok: missing.length === 0, missing };
 }

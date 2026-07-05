@@ -191,7 +191,51 @@ CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
       )).join("\n")}
     `,
   },
+  {
+    version: 5,
+    name: "ticket workflow fields",
+    sql: `
+      ALTER TABLE tickets ADD COLUMN status TEXT DEFAULT '待处理';
+      ALTER TABLE tickets ADD COLUMN priority TEXT DEFAULT '普通';
+      ALTER TABLE tickets ADD COLUMN assignee TEXT;
+      ALTER TABLE tickets ADD COLUMN due_date TEXT;
+      ALTER TABLE tickets ADD COLUMN closed_at TEXT;
+
+      UPDATE tickets
+      SET status = COALESCE(NULLIF(TRIM(status), ''), '待处理'),
+          priority = COALESCE(NULLIF(TRIM(priority), ''), '普通')
+      WHERE status IS NULL OR TRIM(status) = '' OR priority IS NULL OR TRIM(priority) = '';
+
+      CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);
+      CREATE INDEX IF NOT EXISTS idx_tickets_due_date ON tickets(is_deleted, due_date, id);
+    `,
+  },
 ];
+
+function isIgnorableMigrationError(error, statement) {
+  const msg = String(error?.message || error || "");
+  const sql = String(statement || "");
+  return /^ALTER\s+TABLE\s+tickets\s+ADD\s+COLUMN/i.test(sql) && /duplicate column name/i.test(msg);
+}
+
+async function runMigrationStatements(db, statements) {
+  let executed = 0;
+  let skipped = 0;
+  for (const sql of statements) {
+    try {
+      await db.prepare(sql).run();
+      executed += 1;
+    } catch (e) {
+      if (isIgnorableMigrationError(e, sql)) {
+        skipped += 1;
+        continue;
+      }
+      throw e;
+    }
+  }
+  return { executed, skipped };
+}
 
 export function latestSchemaVersion() {
   return MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -226,16 +270,14 @@ export async function applyPendingMigrations(db) {
 
   for (const m of pending) {
     const statements = splitSqlStatements(m.sql);
-    const stmts = statements.map((s) => db.prepare(s));
-    if (stmts.length) await db.batch(stmts);
-    const executed = stmts.length;
+    const result = await runMigrationStatements(db, statements);
 
     await db
       .prepare("INSERT INTO schema_migrations(version, name) VALUES(?, ?);")
       .bind(m.version, m.name)
       .run();
 
-    applied.push({ version: m.version, name: m.name, statements: executed });
+    applied.push({ version: m.version, name: m.name, statements: result.executed, skipped: result.skipped });
   }
 
   return { applied, latest: latestSchemaVersion() };
