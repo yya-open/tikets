@@ -628,7 +628,12 @@ function syncBatchToolbar() {
   const selectable = currentIds.length;
   const selectedOnPage = currentIds.filter((id) => selectedTicketIds.has(id)).length;
   const summary = document.getElementById('batchSummary');
-  if (summary) summary.textContent = selectedOnPage ? `本页已选择 ${selectedOnPage} 条记录` : '未选择记录';
+  if (summary) {
+    const total = Number(window.TicketAppState.serverTotal || serverTotal || selectable) || selectable;
+    summary.textContent = selectedOnPage
+      ? `本页已选择 ${selectedOnPage} 条记录${total > selectable ? `；当前筛选共 ${total} 条，可直接导出当前筛选` : ''}`
+      : (total > selectable ? `当前筛选共 ${total} 条，导出当前筛选可包含全部记录` : '未选择记录');
+  }
   [allHead, allTop].forEach((el) => {
     if (!el) return;
     el.checked = selectable > 0 && selectedOnPage === selectable;
@@ -707,6 +712,8 @@ function bindBatchToolbarInteractions() {
     const btn = e.target && e.target.closest ? e.target.closest('button[id]') : null;
     if (!btn) return;
     const id = btn.id;
+    if (id === 'btnBatchExportFilteredJson') return window.exportCurrentJson && window.exportCurrentJson();
+    if (id === 'btnBatchExportFilteredExcel') return window.exportExcelCurrent && window.exportExcelCurrent();
     if (id === 'btnBatchExportJson') return runBatchAction('export-json');
     if (id === 'btnBatchExportExcel') return runBatchAction('export-excel');
     if (id === 'btnBatchDelete') return runBatchAction('delete');

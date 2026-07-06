@@ -151,6 +151,8 @@ test("main page loads ticket filters before query runtime", () => {
   assert.match(html, /id="tableDensitySelect"/);
   assert.match(html, /id="columnSettingsPanel"/);
   assert.match(html, /id="btnBatchApplyWorkflow"/);
+  assert.match(html, /id="btnBatchExportFilteredExcel"/);
+  assert.match(html, /id="btnBatchExportFilteredJson"/);
   assert.doesNotMatch(html, /class="product-overview"/);
   assert.doesNotMatch(html, /工单协同台/);
   assert.match(html, /<th data-column="status">状态<\/th>/);
@@ -174,6 +176,8 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   assert.match(tableView, /data-column-reset/);
   assert.match(tableView, /column-required/);
   assert.match(tableView, /input\.disabled = !!col\.required/);
+  assert.match(tableView, /btnBatchExportFilteredExcel/);
+  assert.match(tableView, /exportExcelCurrent/);
 });
 
 test("ticket table column widths target semantic columns", () => {
