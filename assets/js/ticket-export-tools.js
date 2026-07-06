@@ -378,14 +378,17 @@ function loadBackup(event) {
         if (!previewRes.ok) throw new Error(`import preview failed: ${previewRes.status}`);
         const preview = await previewRes.json();
         const t = preview && preview.totals ? preview.totals : null;
+        const previewContent = window.TicketImportPreview?.render ? window.TicketImportPreview.render(preview) : null;
         const msg = window.TicketImportPreview ? window.TicketImportPreview.format(preview) : `预演结果：新增 ${t?.inserts || 0} 条，更新 ${t?.updates || 0} 条，跳过 ${t?.skips || 0} 条。`;
 
         const apply = await showConfirm({
           title: "导入预演（安全合并）",
           message: msg,
+          content: previewContent,
           confirmText: "应用导入",
           cancelText: "取消",
-          danger: false
+          danger: false,
+          wide: true
         });
         if (!apply) {
           showToast("已取消导入。", "info");

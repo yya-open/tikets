@@ -25,7 +25,29 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-function showModal({ title = "提示", message = "", okText = "确定", variant = "primary" } = {}) {
+function renderModalBody(bodyEl, { message = "", content = null, structured = false } = {}) {
+  bodyEl.innerHTML = "";
+  bodyEl.classList.toggle("modal-body-structured", !!structured || !!content);
+
+  if (content instanceof Node) {
+    bodyEl.appendChild(content);
+    return;
+  }
+
+  if (content !== null && content !== undefined) {
+    bodyEl.textContent = String(content);
+    return;
+  }
+
+  bodyEl.innerHTML = escapeHtml(message).replace(/\n/g, "<br>");
+}
+
+function prepareModalShell(bodyEl, wide) {
+  const modalEl = bodyEl ? bodyEl.closest(".modal") : null;
+  if (modalEl) modalEl.classList.toggle("modal-wide", !!wide);
+}
+
+function showModal({ title = "提示", message = "", content = null, okText = "确定", variant = "primary", wide = false } = {}) {
   const overlay = document.getElementById("modalOverlay");
   const titleEl = document.getElementById("modalTitle");
   const bodyEl = document.getElementById("modalBody");
@@ -38,8 +60,9 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
 
   overlay.setAttribute("aria-hidden", "false");
   overlay.classList.add("show");
+  prepareModalShell(bodyEl, wide || !!content);
   titleEl.textContent = title;
-  bodyEl.innerHTML = escapeHtml(message).replace(/\n/g, "<br>");
+  renderModalBody(bodyEl, { message, content, structured: !!content });
   footerEl.innerHTML = "";
 
   const okBtn = document.createElement("button");
@@ -54,6 +77,8 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
         else if (document.body && typeof document.body.focus === "function") document.body.focus({ preventScroll: true });
       } catch (_) {}
       overlay.setAttribute("aria-hidden", "true");
+      prepareModalShell(bodyEl, false);
+      bodyEl.classList.remove("modal-body-structured");
       overlay.onclick = null;
       window.removeEventListener("keydown", onKeyDown);
       resolve();
@@ -67,7 +92,7 @@ function showModal({ title = "提示", message = "", okText = "确定", variant 
   });
 }
 
-function showConfirm({ title = "确认操作", message = "", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
+function showConfirm({ title = "确认操作", message = "", content = null, confirmText = "确定", cancelText = "取消", danger = false, wide = false } = {}) {
   const overlay = document.getElementById("modalOverlay");
   const titleEl = document.getElementById("modalTitle");
   const bodyEl = document.getElementById("modalBody");
@@ -77,8 +102,9 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
 
   overlay.setAttribute("aria-hidden", "false");
   overlay.classList.add("show");
+  prepareModalShell(bodyEl, wide || !!content);
   titleEl.textContent = title;
-  bodyEl.innerHTML = escapeHtml(message).replace(/\n/g, "<br>");
+  renderModalBody(bodyEl, { message, content, structured: !!content });
   footerEl.innerHTML = "";
 
   const cancelBtn = document.createElement("button");
@@ -96,6 +122,8 @@ function showConfirm({ title = "确认操作", message = "", confirmText = "确�
         else if (document.body && typeof document.body.focus === "function") document.body.focus({ preventScroll: true });
       } catch (_) {}
       overlay.setAttribute("aria-hidden", "true");
+      prepareModalShell(bodyEl, false);
+      bodyEl.classList.remove("modal-body-structured");
       overlay.onclick = null;
       window.removeEventListener("keydown", onKeyDown);
       resolve(result);
