@@ -2083,23 +2083,19 @@ tr:hover td {
   width: 44px;
 }
 
-#recordTable th:nth-child(2),
-#recordTable td:nth-child(2) {
+#recordTable [data-column="date"] {
   width: 112px;
 }
 
-#recordTable th:nth-child(3),
-#recordTable td:nth-child(3) {
+#recordTable [data-column="issue"] {
   min-width: 230px;
 }
 
-#recordTable th:nth-child(8),
-#recordTable td:nth-child(8) {
+#recordTable [data-column="solution"] {
   width: 150px;
 }
 
-#recordTable th:nth-child(9),
-#recordTable td:nth-child(9) {
+#recordTable [data-column="remarks"] {
   width: 190px;
 }
 
@@ -2456,6 +2452,26 @@ tr:hover td {
   box-shadow: var(--shadow-md);
 }
 
+.column-settings-meta {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 3px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.column-settings-count {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.column-settings-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .column-toggle {
   display: inline-flex;
   align-items: center;
@@ -2467,12 +2483,39 @@ tr:hover td {
   font-weight: 700;
 }
 
+.column-toggle input {
+  flex: 0 0 auto;
+}
+
+.column-toggle-label {
+  min-width: 0;
+}
+
+.column-toggle.is-required {
+  color: #667085;
+}
+
+.column-required {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .column-settings-actions {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
   border-top: 1px solid #edf1f7;
+}
+
+.column-settings-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .batch-edit-panel {

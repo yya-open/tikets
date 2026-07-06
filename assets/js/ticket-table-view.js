@@ -99,6 +99,11 @@ function resetColumnVisibilityDefaults() {
   writeJsonSetting(COLUMN_VISIBILITY_STORAGE_KEY, getDefaultVisibleColumns());
 }
 
+function areDefaultColumnsSelected(visible) {
+  const defaults = getDefaultVisibleColumns();
+  return TABLE_COLUMNS.every((col) => visible.has(col.key) === defaults.includes(col.key));
+}
+
 function applyColumnVisibility(root = document) {
   const visible = getVisibleColumns();
   root.querySelectorAll("[data-column]").forEach((el) => {
@@ -109,6 +114,14 @@ function applyColumnVisibility(root = document) {
 
 function getVisibleTableColumnCount() {
   return 1 + TABLE_COLUMNS.filter((col) => getVisibleColumns().has(col.key)).length;
+}
+
+function updateColumnSettingsMeta(panel) {
+  const visible = getVisibleColumns();
+  const count = panel.querySelector("[data-column-visible-count]");
+  const resetBtn = panel.querySelector("[data-column-reset]");
+  if (count) count.textContent = `已显示 ${visible.size}/${TABLE_COLUMNS.length} 列`;
+  if (resetBtn) resetBtn.disabled = areDefaultColumnsSelected(visible);
 }
 
 function appendBadgeCell(row, key, value, fallback) {
@@ -756,14 +769,27 @@ function renderColumnSettings() {
   const panel = document.getElementById("columnSettingsPanel");
   if (!panel || panel.dataset.rendered === "1") {
     applyColumnVisibility(document);
+    if (panel) updateColumnSettingsMeta(panel);
     return;
   }
   panel.dataset.rendered = "1";
   panel.innerHTML = "";
   const visible = getVisibleColumns();
+  const meta = document.createElement("div");
+  meta.className = "column-settings-meta";
+  const count = document.createElement("span");
+  count.className = "column-settings-count";
+  count.dataset.columnVisibleCount = "1";
+  const hint = document.createElement("span");
+  hint.className = "column-settings-hint";
+  hint.textContent = "日期、问题、操作为固定列";
+  meta.appendChild(count);
+  meta.appendChild(hint);
+  panel.appendChild(meta);
   TABLE_COLUMNS.forEach((col) => {
     const label = document.createElement("label");
     label.className = "column-toggle";
+    if (col.required) label.classList.add("is-required");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = visible.has(col.key);
@@ -772,9 +798,19 @@ function renderColumnSettings() {
     input.addEventListener("change", () => {
       setColumnVisibility(col.key, input.checked);
       applyColumnVisibility(document);
+      updateColumnSettingsMeta(panel);
     });
     label.appendChild(input);
-    label.appendChild(document.createTextNode(col.label));
+    const text = document.createElement("span");
+    text.className = "column-toggle-label";
+    text.textContent = col.label;
+    label.appendChild(text);
+    if (col.required) {
+      const required = document.createElement("span");
+      required.className = "column-required";
+      required.textContent = "固定";
+      label.appendChild(required);
+    }
     panel.appendChild(label);
   });
   const actions = document.createElement("div");
@@ -782,7 +818,8 @@ function renderColumnSettings() {
   const resetBtn = document.createElement("button");
   resetBtn.type = "button";
   resetBtn.className = "small secondary";
-  resetBtn.textContent = "恢复默认列";
+  resetBtn.textContent = "恢复默认";
+  resetBtn.dataset.columnReset = "1";
   resetBtn.addEventListener("click", () => {
     resetColumnVisibilityDefaults();
     const defaults = getVisibleColumns();
@@ -790,10 +827,12 @@ function renderColumnSettings() {
       input.checked = defaults.has(input.dataset.columnToggle);
     });
     applyColumnVisibility(document);
+    updateColumnSettingsMeta(panel);
   });
   actions.appendChild(resetBtn);
   panel.appendChild(actions);
   applyColumnVisibility(document);
+  updateColumnSettingsMeta(panel);
 }
 
 async function applyBatchWorkflowUpdate() {

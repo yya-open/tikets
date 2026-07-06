@@ -169,6 +169,22 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   assert.match(tableView, /\{ key: "due_date", label: "截止日期", defaultHidden: true \}/);
   assert.match(tableView, /function getDefaultVisibleColumns\(\)/);
   assert.match(tableView, /function resetColumnVisibilityDefaults\(\)/);
+  assert.match(tableView, /function updateColumnSettingsMeta\(panel\)/);
+  assert.match(tableView, /data-column-visible-count/);
+  assert.match(tableView, /data-column-reset/);
+  assert.match(tableView, /column-required/);
+  assert.match(tableView, /input\.disabled = !!col\.required/);
+});
+
+test("ticket table column widths target semantic columns", () => {
+  const css = readFileSync(new URL("../assets/app.css", import.meta.url), "utf8");
+
+  assert.match(css, /#recordTable \[data-column="date"\]/);
+  assert.match(css, /#recordTable \[data-column="issue"\]/);
+  assert.match(css, /#recordTable \[data-column="solution"\]/);
+  assert.match(css, /#recordTable \[data-column="remarks"\]/);
+  assert.doesNotMatch(css, /#recordTable th:nth-child\(8\)/);
+  assert.doesNotMatch(css, /#recordTable th:nth-child\(9\)/);
 });
 
 test("pages load auth and api through the ES module core entry", () => {
