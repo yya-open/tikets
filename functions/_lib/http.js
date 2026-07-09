@@ -3,6 +3,7 @@ export function jsonResponse(data, { status = 200, headers = {} } = {}) {
     status,
     headers: {
       "content-type": "application/json; charset=UTF-8",
+      "cache-control": "no-store",
       ...headers,
     },
   });
@@ -53,4 +54,45 @@ export async function respondCachedJson(request, payload, { maxAge = 30, status 
     return new Response(null, { status: 304, headers: responseHeaders });
   }
   return new Response(body, { status, headers: responseHeaders });
+}
+
+// ===== 错误处理工具 =====
+
+/**
+ * 生成标准化的错误 JSON 响应。
+ * 格式: { ok: false, error: string, code?: string, detail?: string }
+ */
+export function errorJson(error, { code, detail, status = 400, headers = {} } = {}) {
+  const payload = { ok: false, error: String(error) };
+  if (code) payload.code = code;
+  if (detail) payload.detail = String(detail);
+  return jsonResponse(payload, { status, headers });
+}
+
+/**
+ * 安全解析请求 JSON 体。解析失败返回标准 400 错误响应。
+ * 返回 { ok: true, data } 或 { ok: false, response }（Response 对象）。
+ */
+export async function parseJsonBody(request) {
+  try {
+    const data = await request.json();
+    return { ok: true, data };
+  } catch {
+    return { ok: false, response: errorJson("invalid_json", { code: "invalid_json", status: 400 }) };
+  }
+}
+
+/**
+ * 高阶函数：包裹 handler，统一捕获异常并返回标准 500 错误。
+ * 用法: export const onRequestGet = withErrorHandler(async ({ request, env, params }) => { ... });
+ */
+export function withErrorHandler(handler) {
+  return async function (ctx) {
+    try {
+      return await handler(ctx);
+    } catch (e) {
+      console.error("Unhandled error:", e);
+      return errorJson(String(e), { code: "internal_error", status: 500 });
+    }
+  };
 }

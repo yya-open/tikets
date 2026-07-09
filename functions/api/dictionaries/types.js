@@ -1,5 +1,5 @@
 import { requireEditKey } from "../../_lib/auth.js";
-import { jsonResponse, respondCachedJson } from "../../_lib/http.js";
+import { jsonResponse, errorJson, parseJsonBody, respondCachedJson, withErrorHandler } from "../../_lib/http.js";
 import { defaultTypeRows, normalizeTypeName } from "../../_lib/ticket_types.js";
 
 function tableMissing(error) {
@@ -40,7 +40,7 @@ async function listTypes(env, { includeDisabled = false } = {}) {
   }));
 }
 
-export async function onRequestGet({ request, env }) {
+const handleGet = withErrorHandler(async ({ request, env }) => {
   const url = new URL(request.url);
   const includeDisabled = ["1", "true", "yes"].includes(String(url.searchParams.get("includeDisabled") || "").toLowerCase());
   try {
@@ -50,24 +50,21 @@ export async function onRequestGet({ request, env }) {
     if (tableMissing(e)) {
       return await respondCachedJson(request, { ok: true, data: defaultTypeRows(), source: "defaults", schema_missing: true }, { maxAge: 30 });
     }
-    return jsonResponse({ ok: false, error: String(e) }, { status: 500, headers: { "cache-control": "no-store" } });
+    throw e;
   }
-}
+});
 
-export async function onRequestPost({ request, env }) {
+const handlePost = withErrorHandler(async ({ request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const name = normalizeTypeName(body?.name);
   if (!name) {
-    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: [{ field: "name", message: "类型名称不能为空" }] }, { status: 400, headers: { "cache-control": "no-store" } });
+    return errorJson("validation_error", { code: "validation_error", detail: "类型名称不能为空", status: 400 });
   }
 
   const sortOrder = parseSortOrder(body?.sort_order ?? body?.sortOrder, 0);
@@ -77,7 +74,7 @@ export async function onRequestPost({ request, env }) {
       .prepare("INSERT INTO ticket_type_dict(name, sort_order, is_enabled, updated_at) VALUES(?, ?, ?, CURRENT_TIMESTAMP)")
       .bind(name, sortOrder, enabled)
       .run();
-    return jsonResponse({ ok: true, id: inserted?.meta?.last_row_id ?? null }, { status: 201, headers: { "cache-control": "no-store" } });
+    return jsonResponse({ ok: true, id: inserted?.meta?.last_row_id ?? null }, { status: 201 });
   } catch (e) {
     const msg = String(e?.message || e);
     if (/UNIQUE constraint failed/i.test(msg)) {
@@ -85,11 +82,14 @@ export async function onRequestPost({ request, env }) {
         .prepare("UPDATE ticket_type_dict SET is_enabled=?, sort_order=?, updated_at=CURRENT_TIMESTAMP WHERE name=?")
         .bind(enabled, sortOrder, name)
         .run();
-      return jsonResponse({ ok: true, restored: true }, { headers: { "cache-control": "no-store" } });
+      return jsonResponse({ ok: true, restored: true });
     }
     if (tableMissing(e)) {
-      return jsonResponse({ ok: false, error: "schema_not_ready", code: "schema_not_ready", message: "请先执行一键初始化或 /api/admin/migrate" }, { status: 409, headers: { "cache-control": "no-store" } });
+      return errorJson("schema_not_ready", { code: "schema_not_ready", detail: "请先执行一键初始化或 /api/admin/migrate", status: 409 });
     }
-    return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: msg }, { status: 500, headers: { "cache-control": "no-store" } });
+    throw e;
   }
-}
+});
+
+export const onRequestGet = handleGet;
+export const onRequestPost = handlePost;

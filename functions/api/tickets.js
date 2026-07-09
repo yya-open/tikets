@@ -1,5 +1,5 @@
 import { requireEditKey } from "../_lib/auth.js";
-import { isPublicCacheableGet, jsonResponse, respondCachedJson } from "../_lib/http.js";
+import { isPublicCacheableGet, jsonResponse, errorJson, parseJsonBody, respondCachedJson, withErrorHandler } from "../_lib/http.js";
 import { validateTicketPayload } from "../_lib/validation.js";
 import {
   buildDeletedFilter,
@@ -76,7 +76,7 @@ function encodeCursor({ v, id }) {
   return b64urlEncodeFromString(JSON.stringify({ v: String(v), id: Number(id) }));
 }
 
-async function handleGet({ request, env }) {
+const handleGet = withErrorHandler(async ({ request, env }) => {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
 
@@ -288,20 +288,17 @@ async function handleGet({ request, env }) {
   }
 }
 
-export async function onRequestPost({ request, env }) {
+const handlePost = withErrorHandler(async ({ request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const checked = validateTicketPayload(body);
   if (!checked.ok) {
-    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", fields: checked.errors }, { status: 400, headers: { "cache-control": "no-store" } });
+    return errorJson("validation_error", { code: "validation_error", detail: null, status: 400 });
   }
 
   const { date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date, closed_at } = checked.data;
@@ -332,16 +329,18 @@ export async function onRequestPost({ request, env }) {
           )
           .bind(date, issue, department, name, solution, remarks, type, nowTs)
           .run();
-        return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" }, { status: 201, headers: { "cache-control": "no-store" } });
+        return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" }, { status: 201 });
       } catch (fallbackError) {
-        return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: String(fallbackError?.message || fallbackError) }, { status: 500, headers: { "cache-control": "no-store" } });
+        throw fallbackError;
       }
     }
-    return jsonResponse({ ok: false, error: "insert_failed", code: "insert_failed", detail: String(e?.message || e) }, { status: 500, headers: { "cache-control": "no-store" } });
+    throw e;
   }
 
-  return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201, headers: { "cache-control": "no-store" } });
-}
+  return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201 });
+});
+
+export const onRequestPost = handlePost;
 
 export async function onRequestGet(ctx) {
   const request = ctx.request;

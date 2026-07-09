@@ -8,7 +8,7 @@ import {
   pushKeywordLikeFilter,
   pushTicketFilters,
 } from "../_lib/ticket_query.js";
-import { isPublicCacheableGet, jsonResponse, respondCachedJson } from "../_lib/http.js";
+import { isPublicCacheableGet, jsonResponse, respondCachedJson, withErrorHandler } from "../_lib/http.js";
 
 /**
  * GET /api/stats
@@ -32,7 +32,7 @@ import { isPublicCacheableGet, jsonResponse, respondCachedJson } from "../_lib/h
  * D1 binding name: DB
  */
 
-async function handleGet({ request, env }) {
+const handleGet = withErrorHandler(async ({ request, env }) => {
   const url = new URL(request.url);
   const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
 

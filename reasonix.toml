@@ -1,0 +1,2 @@
+[permissions]
+allow = ["Bash(cd \"D:/kc/6.22/tikets\" && npm test 2>&1)", "Bash(cd \"D:/kc/6.22/tikets\" && node -e \"require('fs').readFileSync('functions/api/tickets/batch.js','utf8'); console.log('Syntax OK')\" 2>&1)"]

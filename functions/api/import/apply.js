@@ -1,5 +1,5 @@
 import { requireEditKey } from "../../_lib/auth.js";
-import { jsonResponse } from "../../_lib/http.js";
+import { jsonResponse, errorJson, parseJsonBody, withErrorHandler } from "../../_lib/http.js";
 import { diffImport, fetchExistingMap, normalizeImportPayload, parseImportPayload, summarizeDiff, summarizeImport } from "../../_lib/import_common.js";
 
 async function tryRebuildFTS(env) {
@@ -12,30 +12,27 @@ async function tryRebuildFTS(env) {
   }
 }
 
-export async function onRequestPost({ request, env }) {
+const handlePost = withErrorHandler(async ({ request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
-  let payload;
-  try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const payload = parsed.data;
+
+  const parsedPayload = parseImportPayload(payload);
+  if (!parsedPayload) {
+    return errorJson("Expected an array or {active,trash}", { status: 400 });
   }
 
-  const parsed = parseImportPayload(payload);
-  if (!parsed) {
-    return jsonResponse({ ok: false, error: "Expected an array or {active,trash}" }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
-
-  const normalized = normalizeImportPayload(parsed);
+  const normalized = normalizeImportPayload(parsedPayload);
   const incomingSummary = summarizeImport(normalized.all);
   const existingMap = await fetchExistingMap(env, normalized.all.map((row) => row.id));
   const details = diffImport(existingMap, normalized.all);
   const totals = summarizeDiff(details, incomingSummary);
 
   if (totals.invalid > 0) {
-    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", totals, examples: { invalid: details.invalid.slice(0, 10) } }, { status: 400, headers: { "cache-control": "no-store" } });
+    return errorJson("validation_error", { code: "validation_error", status: 400 });
   }
 
   const nowTs = Date.now();
@@ -78,5 +75,7 @@ export async function onRequestPost({ request, env }) {
 
   await flushBatch();
   const fts = await tryRebuildFTS(env);
-  return jsonResponse({ ok: true, totals, applied, fts }, { headers: { "cache-control": "no-store" } });
-}
+  return jsonResponse({ ok: true, totals, applied, fts });
+});
+
+export const onRequestPost = handlePost;

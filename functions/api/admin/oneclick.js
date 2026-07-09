@@ -1,5 +1,5 @@
 import { requireAdminKey } from "../../_lib/auth.js";
-import { jsonResponse } from "../../_lib/http.js";
+import { jsonResponse, withErrorHandler } from "../../_lib/http.js";
 import { applyPendingMigrations, getCurrentSchemaVersion, latestSchemaVersion, listPendingMigrations } from "../../_lib/schema_migrate.js";
 
 async function tableExists(db, name) {
@@ -12,7 +12,7 @@ async function getIndexes(db, tableName) {
   return rows?.results || [];
 }
 
-export async function onRequestPost({ request, env }) {
+const handlePost = withErrorHandler(async ({ request, env }) => {
   const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
@@ -54,5 +54,7 @@ export async function onRequestPost({ request, env }) {
   }
 
   out.ok = Boolean(out.steps.migrate?.ok && out.steps.selfcheck?.ok && (out.steps.fts_rebuild?.ok || out.steps.fts_rebuild?.skipped));
-  return jsonResponse(out, { status: out.ok ? 200 : 500, headers: { "cache-control": "no-store" } });
-}
+  return jsonResponse(out, { status: out.ok ? 200 : 500 });
+});
+
+export const onRequestPost = handlePost;

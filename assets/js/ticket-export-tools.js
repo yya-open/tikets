@@ -1,3 +1,21 @@
+// 延迟加载 XLSX（SheetJS），仅在首次导出 Excel 时加载
+var _xlsxLoadingPromise = null;
+function ensureXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  if (_xlsxLoadingPromise) return _xlsxLoadingPromise;
+  _xlsxLoadingPromise = loadScript("/assets/vendor/xlsx.full.min.js");
+  return _xlsxLoadingPromise;
+}
+
+// 延迟加载 JSZip，仅在首次导出 ZIP 时加载
+var _jszipLoadingPromise = null;
+function ensureJSZip() {
+  if (window.JSZip) return Promise.resolve();
+  if (_jszipLoadingPromise) return _jszipLoadingPromise;
+  _jszipLoadingPromise = loadScript("/assets/vendor/jszip.min.js");
+  return _jszipLoadingPromise;
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -125,6 +143,7 @@ async function fetchRecordsByViewMode(targetViewMode, extraSearchParams) {
 
 async function exportExcelCurrent() {
   try {
+    await ensureXlsx();
     const records = await fetchAllFilteredRecords();
     if (!records.length) return showToast('当前视图没有可导出的记录。', 'warning');
 
@@ -159,6 +178,7 @@ async function exportExcelCurrent() {
 
 async function exportExcelByMonth() {
   try {
+    await ensureXlsx();
     const records = await fetchAllFilteredRecords();
     if (!records.length) return showToast('当前视图没有可导出的记录。', 'warning');
 
@@ -242,6 +262,7 @@ function exportCurrentJson() {
 
 async function exportSummaryExcel() {
   try {
+    await ensureXlsx();
     const records = await fetchAllFilteredRecords();
     if (!records.length) return showToast("当前视图没有可导出的记录。", "warning");
 
@@ -298,9 +319,10 @@ function exportSelectedJson(records) {
   showToast(`已导出选中 JSON（${selected.length} 条）。`, 'success');
 }
 
-function exportSelectedExcel(records) {
+async function exportSelectedExcel(records) {
   const selected = Array.isArray(records) ? records : [];
   if (!selected.length) return showToast('请先选择要导出的工单。', 'warning');
+  await ensureXlsx();
   const rows = makeExcelRows(selected);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -484,6 +506,7 @@ async function archiveByMonthJSON() {
 
 async function exportYearZip() {
   try {
+    await ensureJSZip();
     const records = await fetchAllFilteredRecords();
     if (records.length === 0) return showToast("没有可打包的数据！", "warning");
     const zip = new JSZip();

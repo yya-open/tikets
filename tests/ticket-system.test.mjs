@@ -230,8 +230,8 @@ test("pages keep scripts and styles externalized for CSP", () => {
     "/assets/vendor/chart.umd.min.js",
     "/assets/vendor/chartjs-plugin-datalabels.min.js",
   ]) {
-    assert.ok(mainPage.includes(vendorPath), `${vendorPath} should be loaded locally`);
-    assert.equal(existsSync(new URL(`..${vendorPath}`, import.meta.url)), true, `${vendorPath} should exist`);
+    assert.ok(mainPage.includes(vendorPath) === false, `${vendorPath} should be lazy-loaded (not in HTML)`);
+    assert.equal(existsSync(new URL(`..${vendorPath}`, import.meta.url)), true, `${vendorPath} should exist on disk`);
   }
 
   assert.match(headers, /script-src 'self'(?:;|$)/);

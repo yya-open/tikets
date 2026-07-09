@@ -646,6 +646,9 @@ function syncBatchToolbar() {
   if (btnDelete) btnDelete.style.display = mode === 'trash' ? 'none' : '';
   if (btnRestore) btnRestore.style.display = mode === 'trash' ? '' : 'none';
   if (btnHardDelete) btnHardDelete.style.display = mode === 'trash' ? '' : 'none';
+  // 批量更新面板：选中记录时显示，无选中时隐藏
+  var batchEditPanel = document.getElementById('batchEditPanel');
+  if (batchEditPanel) { batchEditPanel.style.display = selectedOnPage > 0 ? '' : 'none'; }
 }
 
 function toggleSelectAllOnPage(checked) {
@@ -852,39 +855,31 @@ async function applyBatchWorkflowUpdate() {
 
   const ok = await showConfirm({
     title: "批量更新",
-    message: `确认更新选中的 ${selected.length} 条工单吗？`,
+    message: `确认更新选中的 ${selected.length} 条工单吗？\n${status ? "状态：" + status : ""}${assigneeRaw !== "" ? "; 负责人：" + assignee : ""}`,
     confirmText: "应用更新",
     cancelText: "取消",
     danger: false,
   });
   if (!ok) return;
 
-  let success = 0;
-  for (const item of selected) {
-    const payload = {
-      ...item,
-      status: status || item.status || "待处理",
-      assignee: assigneeRaw === "" ? (item.assignee || "") : assignee,
-      updated_at: item.updated_at || "",
-      updated_at_ts: Number(item.updated_at_ts || 0) || 0,
-      force: true,
-    };
-    try {
-      let res = await window.TicketService.updateTicket(item.id, payload);
-      if (res.status === 409) {
-        res = await window.TicketService.updateTicket(item.id, { ...payload, force: true });
-      }
-      if (!res.ok) throw new Error(`batch update failed: ${res.status}`);
-      success += 1;
-    } catch (e) {
-      if (isNoKeyError(e)) return;
-      console.error(e);
-    }
+  try {
+    const ids = selected.map(function (r) { return Number(r.id); }).filter(function (n) { return Number.isFinite(n); });
+    const updates = {};
+    if (status) updates.status = status;
+    // 仅当用户实际修改了负责人输入框时才提交负责人字段（空字符串 = 清空）
+    if (assigneeRaw !== "") updates.assignee = assignee;
+    else updates.assignee = "";
+
+    const result = await window.TicketService.batchUpdate(ids, updates);
+    selectedTicketIds.clear();
+    window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
+    await reloadAndRender();
+    showToast("批量更新完成：成功 " + (result.updated || 0) + " / " + ids.length + " 条。", result.updated === ids.length ? "success" : "warning");
+  } catch (e) {
+    if (isNoKeyError(e)) return;
+    console.error(e);
+    showToast("批量更新失败：" + (e.message || "未知错误"), "error");
   }
-  selectedTicketIds.clear();
-  window.TicketQueryRuntime && window.TicketQueryRuntime.invalidateStatsCache && window.TicketQueryRuntime.invalidateStatsCache();
-  await reloadAndRender();
-  showToast(`批量更新完成：成功 ${success} / ${selected.length} 条。`, success === selected.length ? "success" : "warning");
 }
 
 function bindBatchWorkflowControls() {

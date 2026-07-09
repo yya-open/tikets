@@ -129,6 +129,16 @@
     return await res.json().catch(() => ({}));
   }
 
+  async function batchUpdate(ids, updates) {
+    const res = await window.TicketApi.authedFetch('/api/tickets/batch', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, updates })
+    });
+    await ensureOk(res, 'batch update');
+    return await res.json().catch(() => ({}));
+  }
+
   window.TicketService = {
     loadMeta,
     loadTickets,
@@ -140,6 +150,7 @@
     runAdminMigrate,
     createTicket,
     updateTicket,
+    batchUpdate,
     deleteTicket,
     restoreTicket,
     hardDeleteTicket,

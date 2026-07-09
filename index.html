@@ -7,11 +7,7 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <meta content="#f4f7fb" name="theme-color"/>
 <title>工单记录系统</title>
-<!-- 固定版本本地库：Excel 导出、ZIP 打包、统计图表 -->
-<script defer src="/assets/vendor/xlsx.full.min.js"></script>
-<script defer src="/assets/vendor/jszip.min.js"></script>
-<script defer src="/assets/vendor/chart.umd.min.js"></script>
-<script defer src="/assets/vendor/chartjs-plugin-datalabels.min.js"></script>
+<!-- 固定版本本地库：按需动态加载（Chart.js、XLSX、JSZip）-->
 <script defer src="/assets/js/ticket-config.js"></script>
 <script type="module" src="/assets/js/ticket-core.entry.js"></script>
 <script defer src="/assets/js/ticket-state.js"></script>
@@ -31,6 +27,7 @@
 <script defer src="/assets/js/ticket-stats-view.js"></script>
 <script defer src="/assets/js/ticket-fold-state.js"></script>
 <script defer src="/assets/js/ticket-bindings.js"></script>
+<script defer src="/assets/js/ticket-keyboard.js"></script>
 <link rel="stylesheet" href="/assets/app.css?v=20260706-column-toggle"/>
 
 </head>
@@ -284,7 +281,61 @@
 <th data-column="actions">操作</th>
 </tr>
 </thead>
-<tbody></tbody>
+<!-- tbody 初始为骨架屏行，JS 渲染时自动替换 -->
+<tbody class="is-loading" aria-label="数据加载中">
+<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w65">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
+<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w70">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
+<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
+<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w65">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
+<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
+</tbody>
 </table>
 </div>
 <div class="pagination" id="pagination"></div>
@@ -307,7 +358,7 @@
 <div class="stats-overview-desc">优先关注总量、类型分布和月份趋势。</div>
 </div>
 </div>
-<div class="stats-grid" id="statsCards"></div>
+<div class="stats-grid" id="statsCards"><div class="skeleton-stat"></div><div class="skeleton-stat"></div><div class="skeleton-stat"></div></div>
 <!-- 类型饼图 + 自定义图例 -->
 <div class="chart-surface chart-surface-spaced">
 <div class="chart-title">当前视图 - 故障类型分布</div>

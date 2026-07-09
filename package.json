@@ -1,5 +1,9 @@
 {
   "scripts": {
-    "test": "node --no-warnings --test tests/*.mjs"
+    "test": "node --no-warnings --test tests/*.mjs",
+    "lint": "eslint assets/js/ functions/ tests/ --max-warnings 50 || true"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
   }
 }

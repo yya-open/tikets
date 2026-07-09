@@ -1,5 +1,5 @@
 import { requireAdminKey } from "../_lib/auth.js";
-import { jsonResponse } from "../_lib/http.js";
+import { jsonResponse, errorJson, parseJsonBody, withErrorHandler } from "../_lib/http.js";
 import { normalizeImportPayload, parseImportPayload } from "../_lib/import_common.js";
 
 async function tryRebuildFTS(env) {
@@ -8,39 +8,32 @@ async function tryRebuildFTS(env) {
   } catch {}
 }
 
-export async function onRequestPut({ request, env }) {
+const handlePut = withErrorHandler(async ({ request, env }) => {
   const auth = await requireAdminKey(request, env);
   if (auth) return auth;
 
-  let payload;
-  try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "invalid_json", code: "invalid_json" }, { status: 400, headers: { "cache-control": "no-store" } });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const payload = parsed.data;
 
   const confirmation = String(payload?.confirm || payload?.confirmation || "").trim();
   if (confirmation !== "REPLACE_ALL_TICKETS") {
-    return jsonResponse(
-      {
-        ok: false,
-        error: "confirmation_required",
-        code: "confirmation_required",
-        message: "Set confirm to REPLACE_ALL_TICKETS to replace all cloud tickets.",
-      },
-      { status: 400, headers: { "cache-control": "no-store" } }
-    );
+    return errorJson("confirmation_required", {
+      code: "confirmation_required",
+      detail: "Set confirm to REPLACE_ALL_TICKETS to replace all cloud tickets.",
+      status: 400,
+    });
   }
 
-  const parsed = parseImportPayload(payload);
-  if (!parsed) {
-    return jsonResponse({ ok: false, error: "Expected an array or {active,trash}" }, { status: 400, headers: { "cache-control": "no-store" } });
+  const parsedPayload = parseImportPayload(payload);
+  if (!parsedPayload) {
+    return errorJson("Expected an array or {active,trash}", { status: 400 });
   }
 
-  const normalized = normalizeImportPayload(parsed);
+  const normalized = normalizeImportPayload(parsedPayload);
   const invalid = normalized.all.filter((row) => !row.date || !row.issue);
   if (invalid.length) {
-    return jsonResponse({ ok: false, error: "validation_error", code: "validation_error", invalid: invalid.slice(0, 10) }, { status: 400, headers: { "cache-control": "no-store" } });
+    return errorJson("validation_error", { code: "validation_error", status: 400 });
   }
 
   const createStageSql = `
@@ -93,5 +86,7 @@ export async function onRequestPut({ request, env }) {
   FROM tickets_stage ORDER BY id`).run();
   await tryRebuildFTS(env);
 
-  return jsonResponse({ ok: true, inserted: normalized.all.length, active: normalized.active.length, trash: normalized.trash.length, mode: "replace_all_via_stage" }, { headers: { "cache-control": "no-store" } });
-}
+  return jsonResponse({ ok: true, inserted: normalized.all.length, active: normalized.active.length, trash: normalized.trash.length, mode: "replace_all_via_stage" });
+});
+
+export const onRequestPut = handlePut;

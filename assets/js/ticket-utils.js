@@ -34,3 +34,21 @@ function normalizeRecords(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.map((r, idx) => normalizeRecord(r, idx + 1));
 }
+
+// 动态加载脚本 — 用于按需加载 vendor 库（Chart.js、XLSX、JSZip）
+function loadScript(src) {
+  return new Promise(function (resolve, reject) {
+    var script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = function () { reject(new Error("Failed to load script: " + src)); };
+    document.head.appendChild(script);
+  });
+}
+
+// 动态加载多个脚本（串行，保证执行顺序）
+function loadScripts(sources) {
+  return sources.reduce(function (chain, src) {
+    return chain.then(function () { return loadScript(src); });
+  }, Promise.resolve());
+}

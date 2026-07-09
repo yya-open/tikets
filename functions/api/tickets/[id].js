@@ -1,5 +1,5 @@
 import { requireEditKey } from "../../_lib/auth.js";
-import { jsonResponse } from "../../_lib/http.js";
+import { jsonResponse, errorJson, parseJsonBody, withErrorHandler } from "../../_lib/http.js";
 import { validateTicketPayload } from "../../_lib/validation.js";
 
 /**
@@ -23,19 +23,16 @@ function isDeletedRow(row) {
   return Number(row?.is_deleted ?? 0) === 1;
 }
 
-export async function onRequestPut({ params, request, env }) {
+const handlePut = withErrorHandler(async ({ params, request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   const id = parseId(params.id);
-  if (id === null) return jsonResponse({ ok: false, error: "bad id" }, { status: 400 });
+  if (id === null) return errorJson("bad id", { status: 400 });
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "Invalid JSON" }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const checked = validateTicketPayload(body, { requireVersion: true });
   if (!checked.ok) {
@@ -216,56 +213,52 @@ export async function onRequestPut({ params, request, env }) {
 }
 
 
-export async function onRequestDelete({ params, request, env }) {
+const handleDelete = withErrorHandler(async ({ params, request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   const id = parseId(params.id);
-  if (id === null) return jsonResponse({ ok: false, error: "bad id" }, { status: 400 });
+  if (id === null) return errorJson("bad id", { status: 400 });
 
   // Soft delete (new schema)
+  const nowTs = Date.now();
+  let r;
+
   try {
-    const nowTs = Date.now();
-    let r;
-
-    // Prefer schema with updated_at_ts; fall back if column not present.
-    try {
-      r = await env.DB
-        .prepare(
-          `UPDATE tickets
-           SET is_deleted=1,
-               deleted_at=CURRENT_TIMESTAMP,
-               updated_at=CURRENT_TIMESTAMP,
-               updated_at_ts=?
-           WHERE id=? AND is_deleted=0`
-        )
-        .bind(nowTs, id)
-        .run();
-    } catch {
-      r = await env.DB
-        .prepare(
-          `UPDATE tickets
-           SET is_deleted=1,
-               deleted_at=CURRENT_TIMESTAMP,
-               updated_at=CURRENT_TIMESTAMP
-           WHERE id=? AND is_deleted=0`
-        )
-        .bind(id)
-        .run();
-    }
-
-    const changes = Number(r?.meta?.changes ?? 0);
-    if (changes === 0) {
-      const latest = await getTicket(env, id);
-      if (!latest) return jsonResponse({ ok: false, error: "not_found" }, { status: 404 });
-      if (isDeletedRow(latest)) return jsonResponse({ ok: true, already: true, soft: true });
-      return jsonResponse({ ok: false, error: "delete_failed" }, { status: 500 });
-    }
-
-    return jsonResponse({ ok: true, soft: true });
-  } catch (e) {
-    // Old schema fallback: hard delete
-    await env.DB.prepare("DELETE FROM tickets WHERE id=?").bind(id).run();
-    return jsonResponse({ ok: true, soft: false });
+    r = await env.DB
+      .prepare(
+        `UPDATE tickets
+         SET is_deleted=1,
+             deleted_at=CURRENT_TIMESTAMP,
+             updated_at=CURRENT_TIMESTAMP,
+             updated_at_ts=?
+         WHERE id=? AND is_deleted=0`
+      )
+      .bind(nowTs, id)
+      .run();
+  } catch {
+    r = await env.DB
+      .prepare(
+        `UPDATE tickets
+         SET is_deleted=1,
+             deleted_at=CURRENT_TIMESTAMP,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=? AND is_deleted=0`
+      )
+      .bind(id)
+      .run();
   }
-}
+
+  const changes = Number(r?.meta?.changes ?? 0);
+  if (changes === 0) {
+    const latest = await getTicket(env, id);
+    if (!latest) return errorJson("not_found", { status: 404 });
+    if (isDeletedRow(latest)) return jsonResponse({ ok: true, already: true, soft: true });
+    return errorJson("delete_failed", { status: 500 });
+  }
+
+  return jsonResponse({ ok: true, soft: true });
+});
+
+export const onRequestPut = handlePut;
+export const onRequestDelete = handleDelete;
