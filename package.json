@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "scripts": {
     "test": "node --no-warnings --test tests/*.mjs",
     "lint": "eslint assets/js/ functions/ tests/ --max-warnings 50 || true"

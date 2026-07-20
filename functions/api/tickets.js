@@ -35,6 +35,7 @@ import {
  */
 
 function clampInt(n, { min = 1, max = 1000000, fallback = 1 } = {}) {
+  if (n === null || n === undefined) return fallback;
   const v = Number(n);
   if (!Number.isFinite(v)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(v)));
@@ -286,7 +287,7 @@ const handleGet = withErrorHandler(async ({ request, env }) => {
       { maxAge: 30 }
     );
   }
-}
+});
 
 const handlePost = withErrorHandler(async ({ request, env }) => {
   const auth = await requireEditKey(request, env);

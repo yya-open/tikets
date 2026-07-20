@@ -210,8 +210,7 @@ const handlePut = withErrorHandler(async ({ params, request, env }) => {
       updated_at_ts: Number(latest?.updated_at_ts ?? nowTs) || nowTs,
     });
   }
-}
-
+});
 
 const handleDelete = withErrorHandler(async ({ params, request, env }) => {
   const auth = await requireEditKey(request, env);

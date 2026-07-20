@@ -274,7 +274,7 @@ const handleGet = withErrorHandler(async ({ request, env }) => {
       { maxAge: 60 }
     );
   }
-}
+});
 
 export async function onRequestGet(ctx) {
   const request = ctx.request;
