@@ -1,292 +1,32 @@
 import { requireEditKey } from "../_lib/auth.js";
 import { isPublicCacheableGet, jsonResponse, errorJson, parseJsonBody, respondCachedJson, withErrorHandler } from "../_lib/http.js";
+import { parseTicketListQuery } from "../_lib/ticket-query-params.js";
+import { listTickets } from "../_lib/ticket-repository.js";
 import { validateTicketPayload } from "../_lib/validation.js";
-import {
-  buildDeletedFilter,
-  buildFtsQuery,
-  normalizeDateParam,
-  normalizeFilterTextParam,
-  normalizeStatusDeletedParam,
-  normalizeTextParam,
-  pushKeywordLikeFilter,
-  pushTicketFilters,
-} from "../_lib/ticket_query.js";
 
 /**
  * GET  /api/tickets
+ * POST /api/tickets
  *
- * Query:
- *   - trash=1            -> recycle bin
- *   - from=YYYY-MM-DD
- *   - to=YYYY-MM-DD
- *   - type=xxx
- *   - q=keyword          -> LIKE search across issue/department/name/solution/remarks/type
- *   - page=1
- *   - pageSize=100       -> capped to 100
- *   - cursor=<b64url>    -> keyset pagination cursor (optional)
- *   - direction=next|prev
- *
- * Response:
- *   { data: Ticket[], page, pageSize, total, next_cursor?, prev_cursor? }
- *
- * POST /api/tickets -> create ticket (requires X-EDIT-KEY)
- *
- * D1 binding name: DB
+ * Query behavior, response fields, cache policy, and legacy-schema fallback
+ * are delegated to focused modules under functions/_lib.
  */
-
-function clampInt(n, { min = 1, max = 1000000, fallback = 1 } = {}) {
-  if (n === null || n === undefined) return fallback;
-  const v = Number(n);
-  if (!Number.isFinite(v)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(v)));
-}
-
-function b64urlDecodeToString(input) {
-  const s = String(input || "").trim();
-  if (!s) return "";
-  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
-  const base64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
-  try {
-    return atob(base64);
-  } catch {
-    return "";
-  }
-}
-
-function b64urlEncodeFromString(input) {
-  const b64 = btoa(String(input));
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function decodeCursor(raw) {
-  const txt = b64urlDecodeToString(raw);
-  if (!txt) return null;
-  try {
-    const obj = JSON.parse(txt);
-    if (!obj) return null;
-    const v = String(obj.v ?? "");
-    const id = Number(obj.id);
-    if (!v || !Number.isFinite(id)) return null;
-    return { v, id: Math.trunc(id) };
-  } catch {
-    return null;
-  }
-}
-
-function encodeCursor({ v, id }) {
-  return b64urlEncodeFromString(JSON.stringify({ v: String(v), id: Number(id) }));
-}
-
 const handleGet = withErrorHandler(async ({ request, env }) => {
-  const url = new URL(request.url);
-  const trash = ["1", "true", "yes"].includes(String(url.searchParams.get("trash") || "").toLowerCase());
+  const options = parseTicketListQuery(new URL(request.url).searchParams);
+  const result = await listTickets(env.DB, options);
 
-  const cursor = decodeCursor(url.searchParams.get("cursor"));
-  const directionRaw = String(url.searchParams.get("direction") || url.searchParams.get("dir") || "").toLowerCase();
-  const direction = directionRaw === "prev" || directionRaw === "previous" ? "prev" : "next";
-
-  const page = clampInt(url.searchParams.get("page"), { min: 1, fallback: 1 });
-  const pageSize = clampInt(url.searchParams.get("pageSize"), { min: 1, max: 100, fallback: 100 });
-  const offset = (page - 1) * pageSize;
-
-  const from = normalizeDateParam(url.searchParams.get("from"));
-  const to = normalizeDateParam(url.searchParams.get("to"));
-  const type = normalizeTextParam(url.searchParams.get("type"));
-  const department = normalizeFilterTextParam(url.searchParams.get("department"));
-  const name = normalizeFilterTextParam(url.searchParams.get("name"));
-  const ticketStatus = normalizeFilterTextParam(url.searchParams.get("ticketStatus") || url.searchParams.get("workStatus"));
-  const assignee = normalizeFilterTextParam(url.searchParams.get("assignee"));
-  const priority = normalizeFilterTextParam(url.searchParams.get("priority"));
-  const quickRaw = normalizeFilterTextParam(url.searchParams.get("quick"), 24);
-  const quick = ["open", "overdue", "today", "unassigned"].includes(quickRaw) ? quickRaw : "";
-  const quickDate = normalizeDateParam(url.searchParams.get("quickDate")) || new Date().toISOString().slice(0, 10);
-  const statusDeleted = normalizeStatusDeletedParam(url.searchParams.get("status"));
-  const qRaw = normalizeTextParam(url.searchParams.get("q"));
-  const deleted = buildDeletedFilter(trash, statusDeleted);
-
-  // LIKE keyword: keep it short to reduce abuse.
-  const q = qRaw.length > 120 ? qRaw.slice(0, 120) : qRaw;
-
-  const hasKeyword = Boolean(q);
-  const useCursor = Boolean(cursor) && !hasKeyword;
-
-  // Build WHERE + bind params (new schema)
-  const where = [];
-  const binds = [];
-  pushTicketFilters(where, binds, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
-
-  // Keyword search: prefer FTS if available; fallback to LIKE if FTS table is missing.
-  const ftsQuery = q ? buildFtsQuery(q) : "";
-  const wantFts = Boolean(ftsQuery);
-  const useRelevanceOrder = wantFts && hasKeyword;
-
-  let fromSql = "FROM tickets";
-  let selectSql = "SELECT tickets.*";
-  if (wantFts) {
-    // Join FTS table (rowid maps to tickets.id).
-    fromSql = "FROM tickets JOIN tickets_fts ON tickets_fts.rowid = tickets.id";
-    where.push("tickets_fts MATCH ?");
-    binds.push(ftsQuery);
-  } else if (q) {
-    // Fallback: LIKE (kept for compatibility and non-tokenized languages).
-    pushKeywordLikeFilter(where, binds, q);
+  const payload = {
+    data: result.data,
+    page: options.page,
+    pageSize: options.pageSize,
+    total: result.total,
+  };
+  if (result.supportsCursor) {
+    payload.next_cursor = result.next_cursor;
+    payload.prev_cursor = result.prev_cursor;
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const sortCol = deleted ? "tickets.deleted_at" : "tickets.date";
-
-  // Keyset pagination: if cursor exists, we add an extra WHERE clause and avoid OFFSET.
-  const cursorWhere = [];
-  const cursorBinds = [];
-  let orderSql = deleted
-    ? "ORDER BY deleted_at ASC, id ASC"
-    : "ORDER BY date ASC, id ASC";
-
-
-  if (useRelevanceOrder) {
-    // Relevance first, then newest updated.
-    orderSql = "ORDER BY bm25(tickets_fts) ASC, COALESCE(tickets.updated_at_ts,0) DESC, tickets.id DESC";
-  }
-
-  if (useCursor) {
-    if (direction === "next") {
-      cursorWhere.push(`(${sortCol} > ? OR (${sortCol} = ? AND tickets.id > ?))`);
-      cursorBinds.push(cursor.v, cursor.v, cursor.id);
-      // keep ASC order
-    } else {
-      cursorWhere.push(`(${sortCol} < ? OR (${sortCol} = ? AND tickets.id < ?))`);
-      cursorBinds.push(cursor.v, cursor.v, cursor.id);
-      // fetch previous page in DESC order then reverse in memory
-      orderSql = deleted
-        ? "ORDER BY deleted_at DESC, id DESC"
-        : "ORDER BY date DESC, id DESC";
-    }
-  }
-
-  const whereSqlWithCursor = cursorWhere.length
-    ? (whereSql ? `${whereSql} AND ${cursorWhere.join(" AND ")}` : `WHERE ${cursorWhere.join(" AND ")}`)
-    : whereSql;
-
-  const listSql = useCursor
-    ? `${selectSql} ${fromSql} ${whereSqlWithCursor} ${orderSql} LIMIT ?`
-    : `${selectSql} ${fromSql} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  const countSql = `SELECT COUNT(*) as total ${fromSql} ${whereSql}`;
-  try {
-    const countRow = await env.DB.prepare(countSql).bind(...binds).first();
-    const total = Number(countRow?.total ?? 0) || 0;
-
-    const listStmt = env.DB.prepare(listSql);
-    const bound = useCursor
-      ? listStmt.bind(...binds, ...cursorBinds, pageSize)
-      : listStmt.bind(...binds, pageSize, offset);
-    const { results } = await bound.all();
-
-    // If direction=prev we fetched in DESC order; reverse back to ASC for consistent UI.
-    const rows = Array.isArray(results) ? (direction === "prev" && useCursor ? results.slice().reverse() : results) : [];
-
-    const first = rows.length ? rows[0] : null;
-    const last = rows.length ? rows[rows.length - 1] : null;
-    const cursorKey = deleted ? "deleted_at" : "date";
-    const prev_cursor = useCursor && first ? encodeCursor({ v: first[cursorKey], id: first.id }) : null;
-    const next_cursor = useCursor && last ? encodeCursor({ v: last[cursorKey], id: last.id }) : null;
-
-    return await respondCachedJson(
-      request,
-      { data: rows, page, pageSize, total, next_cursor, prev_cursor },
-      { maxAge: 30 }
-    );
-  } catch (e) {
-    const msg = String(e?.message || e);
-    // If FTS table is missing or MATCH fails, fallback to LIKE but keep the new schema.
-    if (msg.includes('no such table: tickets_fts') || msg.includes('no such module: fts5') || msg.includes('unable to use function MATCH')) {
-      // Re-run query with LIKE (no JOIN) under the new schema.
-      const whereLike = [];
-      const bindsLike = [];
-      pushTicketFilters(whereLike, bindsLike, { deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate });
-      pushKeywordLikeFilter(whereLike, bindsLike, q);
-      const whereLikeSql = whereLike.length ? `WHERE ${whereLike.join(' AND ')}` : '';
-      const sortCol2 = deleted ? 'deleted_at' : 'date';
-      // Keyset cursor logic reused (no JOIN)
-      const cursorWhere2 = [];
-      const cursorBinds2 = [];
-      let orderSql2 = deleted ? 'ORDER BY deleted_at ASC, id ASC' : 'ORDER BY date ASC, id ASC';
-      if (useCursor) {
-        if (direction === 'next') {
-          cursorWhere2.push(`(${sortCol2} > ? OR (${sortCol2} = ? AND id > ?))`);
-          cursorBinds2.push(cursor.v, cursor.v, cursor.id);
-        } else {
-          cursorWhere2.push(`(${sortCol2} < ? OR (${sortCol2} = ? AND id < ?))`);
-          cursorBinds2.push(cursor.v, cursor.v, cursor.id);
-          orderSql2 = deleted ? 'ORDER BY deleted_at DESC, id DESC' : 'ORDER BY date DESC, id DESC';
-        }
-      }
-      const whereLikeSqlWithCursor = cursorWhere2.length
-        ? (whereLikeSql ? `${whereLikeSql} AND ${cursorWhere2.join(' AND ')}` : `WHERE ${cursorWhere2.join(' AND ')}`)
-        : whereLikeSql;
-      const listLikeSql = useCursor
-        ? `SELECT * FROM tickets ${whereLikeSqlWithCursor} ${orderSql2} LIMIT ?`
-        : `SELECT * FROM tickets ${whereLikeSql} ${orderSql2} LIMIT ? OFFSET ?`;
-      const countLikeSql = `SELECT COUNT(*) as total FROM tickets ${whereLikeSql}`;
-      const countRowLike = await env.DB.prepare(countLikeSql).bind(...bindsLike).first();
-      const totalLike = Number(countRowLike?.total ?? 0) || 0;
-      const stmtLike = env.DB.prepare(listLikeSql);
-      const boundLike = useCursor
-        ? stmtLike.bind(...bindsLike, ...cursorBinds2, pageSize)
-        : stmtLike.bind(...bindsLike, pageSize, offset);
-      const { results: resLike } = await boundLike.all();
-      const rowsLike = Array.isArray(resLike) ? (direction === 'prev' && useCursor ? resLike.slice().reverse() : resLike) : [];
-      const firstLike = rowsLike.length ? rowsLike[0] : null;
-      const lastLike = rowsLike.length ? rowsLike[rowsLike.length - 1] : null;
-      const prev_cursorLike = useCursor && firstLike ? encodeCursor({ v: firstLike[sortCol2], id: firstLike.id }) : null;
-      const next_cursorLike = useCursor && lastLike ? encodeCursor({ v: lastLike[sortCol2], id: lastLike.id }) : null;
-      return await respondCachedJson(
-        request,
-        { data: rowsLike, page, pageSize, total: totalLike, next_cursor: next_cursorLike, prev_cursor: prev_cursorLike },
-        { maxAge: 30 }
-      );
-    }
-
-    // Backward compatible fallback (old schema without is_deleted/deleted_at)
-    const where2 = [];
-    const binds2 = [];
-
-    if (from) {
-      where2.push("date >= ?");
-      binds2.push(from);
-    }
-    if (to) {
-      where2.push("date <= ?");
-      binds2.push(to);
-    }
-    if (type) {
-      where2.push("type = ?");
-      binds2.push(type);
-    }
-    if (department) {
-      where2.push("department LIKE ?");
-      binds2.push(`%${department}%`);
-    }
-    if (name) {
-      where2.push("name LIKE ?");
-      binds2.push(`%${name}%`);
-    }
-    pushKeywordLikeFilter(where2, binds2, q, "");
-
-    const whereSql2 = where2.length ? `WHERE ${where2.join(" AND ")}` : "";
-    // Old schema fallback: no trash/cursor. We keep OFFSET mode; keyset not guaranteed.
-    const listSql2 = `SELECT * FROM tickets ${whereSql2} ORDER BY date ASC, id ASC LIMIT ? OFFSET ?`;
-    const countSql2 = `SELECT COUNT(*) as total FROM tickets ${whereSql2}`;
-
-    const countRow2 = await env.DB.prepare(countSql2).bind(...binds2).first();
-    const total2 = Number(countRow2?.total ?? 0) || 0;
-
-    const { results } = await env.DB.prepare(listSql2).bind(...binds2, pageSize, offset).all();
-    return await respondCachedJson(
-      request,
-      { data: results ?? [], page, pageSize, total: total2 },
-      { maxAge: 30 }
-    );
-  }
+  return await respondCachedJson(request, payload, { maxAge: 30 });
 });
 
 const handlePost = withErrorHandler(async ({ request, env }) => {
@@ -295,9 +35,8 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
 
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
-  const body = parsed.data;
 
-  const checked = validateTicketPayload(body);
+  const checked = validateTicketPayload(parsed.data);
   if (!checked.ok) {
     return errorJson("validation_error", { code: "validation_error", detail: null, status: 400 });
   }
@@ -319,23 +58,24 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
       )
       .bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs)
       .run();
-  } catch (e) {
-    const msg = String(e?.message || e);
-    if (/no such column/i.test(msg) || /table tickets has no column/i.test(msg)) {
-      try {
-        result = await env.DB
-          .prepare(
-            `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
-             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
-          )
-          .bind(date, issue, department, name, solution, remarks, type, nowTs)
-          .run();
-        return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" }, { status: 201 });
-      } catch (fallbackError) {
-        throw fallbackError;
-      }
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (!/no such column/i.test(message) && !/table tickets has no column/i.test(message)) {
+      throw error;
     }
-    throw e;
+
+    result = await env.DB
+      .prepare(
+        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
+      )
+      .bind(date, issue, department, name, solution, remarks, type, nowTs)
+      .run();
+
+    return jsonResponse(
+      { ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" },
+      { status: 201 }
+    );
   }
 
   return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201 });
@@ -344,39 +84,35 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
 export const onRequestPost = handlePost;
 
 export async function onRequestGet(ctx) {
-  const request = ctx.request;
-  const env = ctx.env;
+  const { request, env } = ctx;
   if (!isPublicCacheableGet(request)) {
     return await handleGet({ request, env });
   }
 
-  const url = new URL(request.url);
-  const cacheKey = new Request(url.toString(), { method: "GET" });
+  const cacheKey = new Request(new URL(request.url).toString(), { method: "GET" });
   const cache = caches.default;
-
   const hit = await cache.match(cacheKey);
   if (hit) {
-    const h = new Headers(hit.headers);
-    h.set("x-edge-cache", "HIT");
-    return new Response(hit.body, { status: hit.status, headers: h });
+    const headers = new Headers(hit.headers);
+    headers.set("x-edge-cache", "HIT");
+    return new Response(hit.body, { status: hit.status, headers });
   }
 
+  const response = await handleGet({ request, env });
+  if (response?.status !== 200) return response;
 
-  const res = await handleGet({ request, env });
-  // Cache only successful JSON responses (avoid caching 304/errors)
-  if (res && res.status === 200) {
-    // Ensure edge can cache: add s-maxage if not present
-    const cc = res.headers.get("cache-control") || "";
-    if (!/s-maxage=\d+/i.test(cc)) {
-      const headers = new Headers(res.headers);
-      const maxAgeMatch = /max-age=(\d+)/i.exec(cc);
-      const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : 30;
-      headers.set("cache-control", `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=300`);
-      const cloned = new Response(res.body, { status: res.status, headers });
-      await cache.put(cacheKey, cloned.clone());
-      return cloned;
-    }
-    await cache.put(cacheKey, res.clone());
+  const cacheControl = response.headers.get("cache-control") || "";
+  if (/s-maxage=\d+/i.test(cacheControl)) {
+    await cache.put(cacheKey, response.clone());
+    return response;
   }
-  return res;
+
+  const headers = new Headers(response.headers);
+  const maxAgeMatch = /max-age=(\d+)/i.exec(cacheControl);
+  const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : 30;
+  headers.set("cache-control", `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=300`);
+
+  const cacheableResponse = new Response(response.body, { status: response.status, headers });
+  await cache.put(cacheKey, cacheableResponse.clone());
+  return cacheableResponse;
 }
