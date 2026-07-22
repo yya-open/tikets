@@ -1,51 +1,42 @@
 import { requireEditKey } from "../../_lib/auth.js";
 import { jsonResponse, errorJson, parseJsonBody, withErrorHandler } from "../../_lib/http.js";
+import { batchUpdateTickets } from "../../_lib/ticket-write-repository.js";
 
-/**
- * PUT /api/tickets/batch — 批量更新工单（状态 / 负责人）
- */
+const VALID_STATUSES = ["待处理", "处理中", "已解决", "已关闭"];
+const MAX_BATCH_SIZE = 200;
+
+function parseBatchUpdate(body) {
+  const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((id) => Number.isFinite(id)) : [];
+  if (!ids.length) return { error: ["no_ids", "ids 数组为空或无效"] };
+  if (ids.length > MAX_BATCH_SIZE) return { error: ["too_many_ids", "单次批量更新最多 200 条"] };
+
+  const rawUpdates = body.updates || {};
+  const updates = {};
+  if (rawUpdates.status) {
+    if (!VALID_STATUSES.includes(rawUpdates.status)) return { error: ["invalid_status", "无效的状态值"] };
+    updates.status = rawUpdates.status;
+  }
+  if (rawUpdates.assignee !== undefined) updates.assignee = String(rawUpdates.assignee || "").trim();
+  if (!Object.keys(updates).length) return { error: ["no_updates", "未指定需要更新的字段"] };
+
+  return { ids, updates };
+}
+
 const handlePut = withErrorHandler(async ({ request, env }) => {
   const auth = await requireEditKey(request, env);
   if (auth) return auth;
 
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
-  const body = parsed.data;
 
-  const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isFinite(n)) : [];
-  if (!ids.length) return errorJson("no_ids", { code: "no_ids", detail: "ids 数组为空或无效" });
-  if (ids.length > 200) return errorJson("too_many_ids", { code: "too_many_ids", detail: "单次批量更新最多 200 条" });
-
-  const rawUpdates = body.updates || {};
-  const setClauses = [];
-  const bindVars = [];
-  const nowTs = Date.now();
-
-  const validStatuses = ["待处理", "处理中", "已解决", "已关闭"];
-  if (rawUpdates.status && rawUpdates.status !== "") {
-    if (!validStatuses.includes(rawUpdates.status)) {
-      return errorJson("invalid_status", { code: "invalid_status", detail: "无效的状态值" });
-    }
-    setClauses.push("status=?");
-    bindVars.push(rawUpdates.status);
+  const batch = parseBatchUpdate(parsed.data);
+  if (batch.error) {
+    const [code, detail] = batch.error;
+    return errorJson(code, { code, detail });
   }
 
-  if (rawUpdates.assignee !== undefined) {
-    setClauses.push("assignee=?");
-    bindVars.push(String(rawUpdates.assignee || "").trim());
-  }
-
-  if (!setClauses.length) return errorJson("no_updates", { code: "no_updates", detail: "未指定需要更新的字段" });
-
-  setClauses.push("updated_at=CURRENT_TIMESTAMP");
-  setClauses.push("updated_at_ts=?");
-
-  const placeholders = ids.map(() => "?").join(",");
-  const sql = "UPDATE tickets SET " + setClauses.join(", ") + " WHERE id IN (" + placeholders + ") AND is_deleted=0";
-  const allBinds = bindVars.concat(nowTs, ids);
-  const r = await env.DB.prepare(sql).bind(...allBinds).run();
-  const updated = Number(r?.meta?.changes ?? 0);
-  return jsonResponse({ ok: true, updated: updated, total: ids.length });
+  const updated = await batchUpdateTickets(env.DB, { ...batch, nowTs: Date.now() });
+  return jsonResponse({ ok: true, updated, total: batch.ids.length });
 });
 
 export const onRequestPut = handlePut;

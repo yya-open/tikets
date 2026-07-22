@@ -2,6 +2,7 @@ import { requireEditKey } from "../_lib/auth.js";
 import { isPublicCacheableGet, jsonResponse, errorJson, parseJsonBody, respondCachedJson, withErrorHandler } from "../_lib/http.js";
 import { parseTicketListQuery } from "../_lib/ticket-query-params.js";
 import { listTickets } from "../_lib/ticket-repository.js";
+import { createTicket } from "../_lib/ticket-write-repository.js";
 import { validateTicketPayload } from "../_lib/validation.js";
 
 /**
@@ -41,44 +42,8 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
     return errorJson("validation_error", { code: "validation_error", detail: null, status: 400 });
   }
 
-  const { date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date, closed_at } = checked.data;
-  const nowTs = Date.now();
-  const closedAtValue = status === "已关闭" ? (closed_at || new Date(nowTs).toISOString()) : null;
-
-  let result;
-  try {
-    result = await env.DB
-      .prepare(
-        `INSERT INTO tickets (
-           date, issue, department, name, solution, remarks, type,
-           status, priority, assignee, due_date, closed_at,
-           updated_at, updated_at_ts
-         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
-      )
-      .bind(date, issue, department, name, solution, remarks, type, status, priority, assignee, due_date || null, closedAtValue, nowTs)
-      .run();
-  } catch (error) {
-    const message = String(error?.message || error);
-    if (!/no such column/i.test(message) && !/table tickets has no column/i.test(message)) {
-      throw error;
-    }
-
-    result = await env.DB
-      .prepare(
-        `INSERT INTO tickets (date, issue, department, name, solution, remarks, type, updated_at, updated_at_ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`
-      )
-      .bind(date, issue, department, name, solution, remarks, type, nowTs)
-      .run();
-
-    return jsonResponse(
-      { ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs, schema_warning: "workflow_fields_missing" },
-      { status: 201 }
-    );
-  }
-
-  return jsonResponse({ ok: true, id: result?.meta?.last_row_id ?? null, updated_at_ts: nowTs }, { status: 201 });
+  const result = await createTicket(env.DB, checked.data, Date.now());
+  return jsonResponse({ ok: true, ...result }, { status: 201 });
 });
 
 export const onRequestPost = handlePost;
