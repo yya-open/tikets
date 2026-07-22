@@ -16,7 +16,16 @@ function parseBatchUpdate(body) {
     if (!VALID_STATUSES.includes(rawUpdates.status)) return { error: ["invalid_status", "无效的状态值"] };
     updates.status = rawUpdates.status;
   }
-  if (rawUpdates.assignee !== undefined) updates.assignee = String(rawUpdates.assignee || "").trim();
+  // assignee 规则：
+  //   - 未传字段 / 传空串 => 不改动负责人（避免"只改状态"意外清空负责人）
+  //   - 传 null           => 显式清空负责人
+  //   - 传非空字符串       => 更新为该值（trim 后仍非空才生效）
+  if (rawUpdates.assignee === null) {
+    updates.assignee = "";
+  } else if (typeof rawUpdates.assignee === "string") {
+    const trimmed = rawUpdates.assignee.trim();
+    if (trimmed) updates.assignee = trimmed;
+  }
   if (!Object.keys(updates).length) return { error: ["no_updates", "未指定需要更新的字段"] };
 
   return { ids, updates };

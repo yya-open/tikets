@@ -708,9 +708,9 @@ async function applyBatchWorkflowUpdate() {
     const ids = selected.map(function (r) { return Number(r.id); }).filter(function (n) { return Number.isFinite(n); });
     const updates = {};
     if (status) updates.status = status;
-    // 仅当用户实际修改了负责人输入框时才提交负责人字段（空字符串 = 清空）
-    if (assigneeRaw !== "") updates.assignee = assignee;
-    else updates.assignee = "";
+    // 仅当用户在负责人输入框填写了非空内容时才提交 assignee；
+    // 空输入表示"不改动负责人字段"，避免把原来的负责人清空。
+    if (assigneeRaw !== "" && assignee !== "") updates.assignee = assignee;
 
     const result = await window.TicketService.batchUpdate(ids, updates);
     selectedTicketIds.clear();
@@ -835,7 +835,8 @@ async function renderTable({ resetPage = true } = {}) {
 
   try {
     if (resetPage) currentPage = 1;
-    await loadPageFromServer();
+    const loaded = await loadPageFromServer();
+    if (loaded === false) return;
   } catch (e) {
     console.error(e);
     showToast("加载失败：请检查网络或后端是否正常。", "error");
@@ -972,7 +973,7 @@ function renderPagination(totalItems) {
 
   const maxButtons = 7;
   let startPage = Math.max(1, currentPage - 3);
-  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  const endPage = Math.min(totalPages, startPage + maxButtons - 1);
   startPage = Math.max(1, endPage - maxButtons + 1);
 
   for (let p = startPage; p <= endPage; p++) {

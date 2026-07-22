@@ -1,5 +1,6 @@
 var lastStatsKey = "";
 var cachedStats = null;
+var latestPageRequestSeq = 0;
 
 function buildFilters({ includeYearMonth = true } = {}) {
   if (window.TicketQueryRuntime && typeof window.TicketQueryRuntime.buildSnapshot === 'function') {
@@ -43,14 +44,24 @@ async function loadMetaFromServer() {
 }
 
 async function loadPageFromServer() {
+  const requestSeq = ++latestPageRequestSeq;
   const runtime = window.TicketQueryRuntime;
   const snapshot = runtime && typeof runtime.buildSnapshot === 'function'
     ? runtime.buildSnapshot({ includeYearMonth: true, viewMode: window.TicketAppState.viewMode, page: currentPage, pageSize })
     : null;
+  const nav = cursorNav && cursorNav.cursor ? { cursor: cursorNav.cursor, direction: cursorNav.direction || 'next' } : {};
 
-  const j = snapshot
-    ? await runtime.fetchPage(snapshot, cursorNav && cursorNav.cursor ? { cursor: cursorNav.cursor, direction: cursorNav.direction || 'next' } : {})
-    : await window.TicketService.loadTickets(buildFilters({ includeYearMonth: true }));
+  let j;
+  try {
+    j = snapshot
+      ? await runtime.fetchPage(snapshot, nav)
+      : await window.TicketService.loadTickets(buildFilters({ includeYearMonth: true }));
+  } catch (e) {
+    if (requestSeq !== latestPageRequestSeq) return false;
+    throw e;
+  }
+
+  if (requestSeq !== latestPageRequestSeq) return false;
 
   const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
   window.TicketPageState.setRecords(normalizeRecords(arr));
@@ -70,6 +81,7 @@ async function loadPageFromServer() {
   }
 
   cursorNav = null;
+  return true;
 }
 
 async function loadStatsFromServer() {

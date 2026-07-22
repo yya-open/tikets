@@ -53,12 +53,29 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
 
   const updateIds = new Set(details.updates.map((item) => item.id));
   let applied = 0;
+  let attempted = 0;
   let statements = [];
   async function flushBatch() {
     if (!statements.length) return;
-    await env.DB.batch(statements);
-    applied += statements.length;
-    statements = [];
+    const batchSize = statements.length;
+    attempted += batchSize;
+    try {
+      await env.DB.batch(statements);
+      applied += batchSize;
+      statements = [];
+    } catch (error) {
+      const failure = {
+        ok: false,
+        code: "import_apply_partial_failure",
+        detail: "导入过程中有批次失败；此前成功提交的批次不会自动回滚。",
+        attempted,
+        applied,
+        failed: batchSize,
+        error: String(error?.message || error),
+      };
+      statements = [];
+      return failure;
+    }
   }
 
   for (const row of normalized.all) {
@@ -70,12 +87,16 @@ const handlePost = withErrorHandler(async ({ request, env }) => {
       if (!updateIds.has(row.id)) continue;
       statements.push(updateStmt.bind(row.date, row.issue, row.department, row.name, row.solution, row.remarks, row.type, row.status, row.priority, row.assignee, row.due_date || null, row.closed_at || null, row.is_deleted, row.deleted_at || null, row.updated_at, row.updated_at_ts || nowTs, row.id));
     }
-    if (statements.length >= 100) await flushBatch();
+    if (statements.length >= 100) {
+      const failure = await flushBatch();
+      if (failure) return errorJson("import_apply_partial_failure", { status: 409, ...failure });
+    }
   }
 
-  await flushBatch();
+  const failure = await flushBatch();
+  if (failure) return errorJson("import_apply_partial_failure", { status: 409, ...failure });
   const fts = await tryRebuildFTS(env);
-  return jsonResponse({ ok: true, totals, applied, fts });
+  return jsonResponse({ ok: true, totals, attempted, applied, fts });
 });
 
 export const onRequestPost = handlePost;

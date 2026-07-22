@@ -274,6 +274,30 @@ test("PUT /api/tickets/batch updates status and assignee", async () => {
   d1.close();
 });
 
+test("PUT /api/tickets/batch keeps assignee when omitted or blank", async () => {
+  const d1 = initTestDb();
+  const first = await insertTicket(d1, { assignee: "张三" });
+  const second = await insertTicket(d1, { assignee: "李四" });
+  const { onRequestPut } = await import("../functions/api/tickets/batch.js");
+  const res = await onRequestPut(createCtx({
+    method: "PUT",
+    url: "/api/tickets/batch",
+    body: { ids: [first.id, second.id], updates: { status: "处理中", assignee: "" } },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.updated, 2);
+  const updated = await d1.prepare("SELECT status, assignee FROM tickets WHERE id IN (?, ?) ORDER BY id").bind(first.id, second.id).all();
+  assert.deepEqual(updated.results.map((row) => ({ ...row })), [
+    { status: "处理中", assignee: "张三" },
+    { status: "处理中", assignee: "李四" },
+  ]);
+  d1.close();
+});
+
 test("PUT /api/tickets/batch rejects invalid status", async () => {
   const d1 = initTestDb();
   const ticket = await insertTicket(d1);
