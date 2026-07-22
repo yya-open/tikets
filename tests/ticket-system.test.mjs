@@ -140,19 +140,23 @@ test("SQL splitter keeps trigger bodies intact", () => {
   assert.match(statements[2], /CREATE INDEX/);
 });
 
-test("main page loads ticket filters before query runtime", () => {
+test("main page loads filters, query runtime, and query controller in order", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const filtersIndex = html.indexOf("/assets/js/ticket-filters.js");
   const pageStateIndex = html.indexOf("/assets/js/ticket-page-state.js");
   const runtimeIndex = html.indexOf("/assets/js/ticket-query-runtime.js");
+  const controllerIndex = html.indexOf("/assets/js/ticket-query-controller.js");
   const tableViewIndex = html.indexOf("/assets/js/ticket-table-view.js");
   assert.ok(filtersIndex > -1, "ticket-filters.js should be loaded by index.html");
   assert.ok(pageStateIndex > -1, "ticket-page-state.js should be loaded by index.html");
   assert.ok(runtimeIndex > -1, "ticket-query-runtime.js should be loaded by index.html");
+  assert.ok(controllerIndex > -1, "ticket-query-controller.js should be loaded by index.html");
   assert.ok(tableViewIndex > -1, "ticket-table-view.js should be loaded by index.html");
   assert.ok(pageStateIndex < runtimeIndex, "page state should be available before query runtime snapshots");
-  assert.ok(pageStateIndex < tableViewIndex, "page state should be available before table view state access");
   assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
+  assert.ok(runtimeIndex < controllerIndex, "query runtime should be available before query controller");
+  assert.ok(controllerIndex < tableViewIndex, "query controller should be available before table view");
+  assert.ok(pageStateIndex < tableViewIndex, "page state should be available before table view state access");
   assert.match(html, /id="quickFilterGroup"/);
   assert.match(html, /id="tableDensitySelect"/);
   assert.match(html, /id="columnSettingsPanel"/);
@@ -169,6 +173,7 @@ test("main page loads ticket filters before query runtime", () => {
 
 test("ticket table columns can be hidden with sensible defaults", () => {
   const tableView = readFileSync(new URL("../assets/js/ticket-table-view.js", import.meta.url), "utf8");
+  const queryController = readFileSync(new URL("../assets/js/ticket-query-controller.js", import.meta.url), "utf8");
 
   assert.match(tableView, /ticket_visible_columns_v2/);
   assert.match(tableView, /\{ key: "status", label: "状态", defaultHidden: true \}/);
@@ -183,6 +188,11 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   assert.match(tableView, /column-required/);
   assert.match(tableView, /input\.disabled = !!col\.required/);
   assert.match(tableView, /window\.TicketPageState\.setRecords/);
+  assert.doesNotMatch(tableView, /function buildFilters\(/);
+  assert.doesNotMatch(tableView, /function loadPageFromServer\(/);
+  assert.match(queryController, /function buildFilters\(/);
+  assert.match(queryController, /function loadPageFromServer\(/);
+  assert.match(queryController, /function reloadAndRender\(/);
   assert.doesNotMatch(tableView, /var\s+pageCursorMap\s*=\s*new Map\(\)/);
   assert.doesNotMatch(tableView, /var\s+selectedTicketIds\s*=\s*new Set\(\)/);
 });
