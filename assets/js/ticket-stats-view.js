@@ -168,6 +168,7 @@ function updateStatsAndChartsFromStats(stats) {
   });
 }
 
+/*
       // ===== 颜色生成 =====
       const chartPalette = [
         "hsl(210 75% 55%)",
@@ -354,6 +355,7 @@ tooltip: {
         });
       }
     }
+*/
 
 
     

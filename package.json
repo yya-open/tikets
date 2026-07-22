@@ -2,9 +2,10 @@
   "type": "module",
   "scripts": {
     "test": "node --no-warnings --test tests/*.mjs",
-    "lint": "eslint assets/js/ functions/ tests/ --max-warnings 50 || true"
+    "lint": "eslint assets/js functions tests --max-warnings 50"
   },
   "devDependencies": {
-    "eslint": "^9.0.0"
+    "eslint": "^9.0.0",
+    "globals": "^17.7.0"
   }
 }

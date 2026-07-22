@@ -223,6 +223,75 @@ test("PUT /api/tickets/:id returns 404 for non-existent ticket", async () => {
   d1.close();
 });
 
+test("PUT /api/tickets/:id returns 409 for a stale version", async () => {
+  const d1 = initTestDb();
+  const ticket = await insertTicket(d1);
+  const { onRequestPut } = await import("../functions/api/tickets/[id].js");
+  const res = await onRequestPut(createCtx({
+    method: "PUT",
+    url: `/api/tickets/${ticket.id}`,
+    params: { id: String(ticket.id) },
+    body: {
+      date: ticket.date,
+      issue: "过期版本更新",
+      type: ticket.type,
+      status: ticket.status,
+      priority: ticket.priority,
+      updated_at_ts: ticket.updated_at_ts - 1,
+    },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+
+  assert.equal(res.status, 409);
+  const data = await res.json();
+  assert.equal(data.error, "conflict");
+  assert.equal(data.current.id, ticket.id);
+  d1.close();
+});
+
+test("PUT /api/tickets/batch updates status and assignee", async () => {
+  const d1 = initTestDb();
+  const first = await insertTicket(d1, { assignee: "" });
+  const second = await insertTicket(d1, { assignee: "" });
+  const { onRequestPut } = await import("../functions/api/tickets/batch.js");
+  const res = await onRequestPut(createCtx({
+    method: "PUT",
+    url: "/api/tickets/batch",
+    body: { ids: [first.id, second.id], updates: { status: "处理中", assignee: "王五" } },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.updated, 2);
+  const updated = await d1.prepare("SELECT status, assignee FROM tickets WHERE id IN (?, ?) ORDER BY id").bind(first.id, second.id).all();
+  assert.deepEqual(updated.results.map((row) => ({ ...row })), [
+    { status: "处理中", assignee: "王五" },
+    { status: "处理中", assignee: "王五" },
+  ]);
+  d1.close();
+});
+
+test("PUT /api/tickets/batch rejects invalid status", async () => {
+  const d1 = initTestDb();
+  const ticket = await insertTicket(d1);
+  const { onRequestPut } = await import("../functions/api/tickets/batch.js");
+  const res = await onRequestPut(createCtx({
+    method: "PUT",
+    url: "/api/tickets/batch",
+    body: { ids: [ticket.id], updates: { status: "未知状态" } },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.code, "invalid_status");
+  d1.close();
+});
+
 // ===== DELETE /api/tickets/:id =====
 
 test("DELETE /api/tickets/:id soft-deletes a ticket", async () => {
