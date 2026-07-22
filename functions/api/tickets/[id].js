@@ -31,12 +31,18 @@ const handlePut = withErrorHandler(async ({ params, request, env }) => {
   if (result.status === "deleted") return jsonResponse({ ok: false, error: "deleted" }, { status: 410 });
   if (result.status === "missing_version") {
     return jsonResponse(
-      { ok: false, error: "missing_version", hint: "send updated_at_ts (preferred) or updated_at for concurrency control" },
+      { ok: false, error: "missing_version", hint: "send a positive updated_at_ts for concurrency control" },
       { status: 400, headers: { "cache-control": "no-store" } }
     );
   }
+  if (result.status === "version_unavailable") {
+    return jsonResponse(
+      { ok: false, error: "version_unavailable", detail: "数据库缺少 updated_at_ts，无法安全执行并发更新" },
+      { status: 503, headers: { "cache-control": "no-store" } }
+    );
+  }
   if (result.status === "conflict") {
-    const { status, ...conflict } = result;
+    const { status: _status, ...conflict } = result;
     return jsonResponse({ ok: false, error: "conflict", ...conflict }, { status: 409 });
   }
 

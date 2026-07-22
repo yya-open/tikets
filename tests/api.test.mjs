@@ -207,6 +207,49 @@ test("PUT /api/tickets/:id updates an existing ticket", async () => {
   d1.close();
 });
 
+test("PUT /api/tickets/:id rejects second-level versions and force override", async () => {
+  const d1 = initTestDb();
+  const ticket = await insertTicket(d1);
+  const { onRequestPut } = await import("../functions/api/tickets/[id].js");
+  const base = {
+    date: ticket.date,
+    issue: "不应写入",
+    type: ticket.type,
+    status: ticket.status,
+    priority: ticket.priority,
+  };
+
+  const legacyRes = await onRequestPut(createCtx({
+    method: "PUT",
+    url: `/api/tickets/${ticket.id}`,
+    params: { id: String(ticket.id) },
+    body: { ...base, updated_at: ticket.updated_at || "2026-06-15 12:00:00" },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+  assert.equal(legacyRes.status, 400);
+  const legacyData = await legacyRes.json();
+  assert.equal(legacyData.error, "validation_error");
+  assert.ok(legacyData.fields.some((field) => field.field === "updated_at_ts"));
+
+  const forceRes = await onRequestPut(createCtx({
+    method: "PUT",
+    url: `/api/tickets/${ticket.id}`,
+    params: { id: String(ticket.id) },
+    body: { ...base, updated_at_ts: ticket.updated_at_ts, force: true },
+    headers: { "x-edit-key": EDIT_KEY },
+    env: env(d1),
+  }));
+  assert.equal(forceRes.status, 400);
+  const forceData = await forceRes.json();
+  assert.equal(forceData.error, "validation_error");
+  assert.ok(forceData.fields.some((field) => field.field === "force"));
+
+  const unchanged = await d1.prepare("SELECT issue FROM tickets WHERE id=?").bind(ticket.id).first();
+  assert.equal(unchanged.issue, ticket.issue);
+  d1.close();
+});
+
 test("PUT /api/tickets/:id returns 404 for non-existent ticket", async () => {
   const d1 = initTestDb();
   const { onRequestPut } = await import("../functions/api/tickets/[id].js");

@@ -23,7 +23,6 @@ export function validateTicketPayload(input, { requireVersion = false } = {}) {
     closed_at: cleanText(data.closed_at ?? data.closedAt, 40),
     updated_at: cleanText(data.updated_at ?? data.updatedAt, 40),
     updated_at_ts: Number(data.updated_at_ts ?? data.updatedAtTs ?? data.updatedAtTS ?? data.updated_atTs) || 0,
-    force: Boolean(data.force),
   };
 
   const errors = [];
@@ -60,8 +59,11 @@ export function validateTicketPayload(input, { requireVersion = false } = {}) {
   if (normalized.due_date && !/^\d{4}-\d{2}-\d{2}$/.test(normalized.due_date)) {
     errors.push({ field: "due_date", message: "截止日期必须是 YYYY-MM-DD" });
   }
-  if (requireVersion && !normalized.force && !(normalized.updated_at_ts > 0) && !normalized.updated_at) {
-    errors.push({ field: "updated_at_ts", message: "缺少并发版本号，请刷新后重试" });
+  if (requireVersion && data.force) {
+    errors.push({ field: "force", message: "force 参数已禁用，请使用 updated_at_ts 进行并发控制" });
+  }
+  if (requireVersion && !(normalized.updated_at_ts > 0)) {
+    errors.push({ field: "updated_at_ts", message: "缺少毫秒级并发版本号，请刷新后重试" });
   }
 
   return {

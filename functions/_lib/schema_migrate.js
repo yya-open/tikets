@@ -211,6 +211,19 @@ CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type);
       CREATE INDEX IF NOT EXISTS idx_tickets_due_date ON tickets(is_deleted, due_date, id);
     `,
   },
+  {
+    version: 6,
+    name: "backfill ticket millisecond versions",
+    sql: `
+      UPDATE tickets
+      SET updated_at_ts = CASE
+        WHEN updated_at IS NOT NULL AND strftime('%s', updated_at) IS NOT NULL
+          THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000
+        ELSE CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      END
+      WHERE COALESCE(updated_at_ts, 0) <= 0;
+    `,
+  },
 ];
 
 function isIgnorableMigrationError(error, statement) {

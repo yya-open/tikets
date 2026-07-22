@@ -47,7 +47,6 @@ function parseVersion(body) {
   const updatedAtTs = Number(body?.updated_at_ts ?? body?.updatedAtTs ?? body?.updatedAtTS ?? body?.updated_atTs);
   return {
     hasTimestamp: Number.isFinite(updatedAtTs) && updatedAtTs > 0,
-    updatedAt: String(body?.updated_at ?? body?.updatedAt ?? "").trim(),
     updatedAtTs,
   };
 }
@@ -78,34 +77,14 @@ async function updateCurrentSchema(db, { id, ticket, version, nowTs }) {
         updated_at=CURRENT_TIMESTAMP,
         updated_at_ts=?`;
 
-  if (ticket.force) {
-    return await db.prepare(`${baseSql} WHERE id=? AND is_deleted=0`).bind(...values, nowTs, id).run();
-  }
-  if (version.hasTimestamp) {
-    return await db.prepare(`${baseSql} WHERE id=? AND is_deleted=0 AND updated_at_ts=?`).bind(...values, nowTs, id, version.updatedAtTs).run();
-  }
-  return await db.prepare(`${baseSql} WHERE id=? AND is_deleted=0 AND updated_at=?`).bind(...values, nowTs, id, version.updatedAt).run();
+  return await db.prepare(`${baseSql} WHERE id=? AND is_deleted=0 AND updated_at_ts=?`).bind(...values, nowTs, id, version.updatedAtTs).run();
 }
 
 async function updateLegacySchema(db, { id, ticket, version, nowTs }) {
   const values = [ticket.date, ticket.issue, ticket.department, ticket.name, ticket.solution, ticket.remarks, ticket.type];
   const baseSql = "UPDATE tickets SET date=?, issue=?, department=?, name=?, solution=?, remarks=?, type=?, updated_at=CURRENT_TIMESTAMP";
 
-  if (ticket.force) {
-    try {
-      return await db.prepare(`${baseSql}, updated_at_ts=? WHERE id=?`).bind(...values, nowTs, id).run();
-    } catch {
-      return await db.prepare(`${baseSql} WHERE id=?`).bind(...values, id).run();
-    }
-  }
-  if (version.hasTimestamp) {
-    try {
-      return await db.prepare(`${baseSql}, updated_at_ts=? WHERE id=? AND updated_at_ts=?`).bind(...values, nowTs, id, version.updatedAtTs).run();
-    } catch {
-      return await db.prepare(`${baseSql} WHERE id=? AND updated_at=?`).bind(...values, id, version.updatedAt).run();
-    }
-  }
-  return await db.prepare(`${baseSql} WHERE id=? AND updated_at=?`).bind(...values, id, version.updatedAt).run();
+  return await db.prepare(`${baseSql}, updated_at_ts=? WHERE id=? AND updated_at_ts=?`).bind(...values, nowTs, id, version.updatedAtTs).run();
 }
 
 export async function updateTicket(db, { id, ticket, body, nowTs }) {
@@ -114,7 +93,7 @@ export async function updateTicket(db, { id, ticket, body, nowTs }) {
   if (isDeletedTicket(current)) return { status: "deleted" };
 
   const version = parseVersion(body);
-  if (!ticket.force && !version.hasTimestamp && !version.updatedAt) {
+  if (!version.hasTimestamp) {
     return { status: "missing_version" };
   }
 
@@ -122,18 +101,22 @@ export async function updateTicket(db, { id, ticket, body, nowTs }) {
   const currentUpdatedAtTs = Number(current.updated_at_ts ?? 0) || 0;
   let result;
   try {
-    result = await updateCurrentSchema(db, { id, ticket, version, nowTs });
-  } catch {
-    result = await updateLegacySchema(db, { id, ticket, version, nowTs });
+    try {
+      result = await updateCurrentSchema(db, { id, ticket, version, nowTs });
+    } catch {
+      result = await updateLegacySchema(db, { id, ticket, version, nowTs });
+    }
+  } catch (error) {
+    if (isMissingColumnError(error)) return { status: "version_unavailable" };
+    throw error;
   }
 
-  if (Number(result?.meta?.changes ?? 0) === 0 && !ticket.force) {
+  if (Number(result?.meta?.changes ?? 0) === 0) {
     const latest = await findTicket(db, id);
     return {
       status: "conflict",
       current: latest ?? current,
-      client_updated_at: version.updatedAt,
-      client_updated_at_ts: version.hasTimestamp ? version.updatedAtTs : null,
+      client_updated_at_ts: version.updatedAtTs,
       server_updated_at: String((latest ?? current).updated_at ?? currentUpdatedAt),
       server_updated_at_ts: Number((latest ?? current).updated_at_ts ?? currentUpdatedAtTs) || 0,
     };
