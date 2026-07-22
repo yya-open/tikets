@@ -1,30 +1,53 @@
-var records = [];
 var editingId = null;
 var editingUpdatedAt = ""; // legacy concurrency token from server
 var editingUpdatedAtTs = 0; // preferred concurrency token (ms timestamp)
-var nextId = 1;
+
+window.__TicketPageStateDraft = window.__TicketPageStateDraft || {
+  records: [],
+  nextId: 1,
+  activeYear: "",
+  activeMonth: "",
+  serverTotal: 0,
+  metaMonthCounts: {},
+  metaTotalAll: 0,
+  pageSize: (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.pageSize) || 100,
+  currentPage: 1,
+};
+
+function getPageStateValue(key) {
+  if (window.TicketPageState && typeof window.TicketPageState.get === "function") return window.TicketPageState.get(key);
+  return window.__TicketPageStateDraft[key];
+}
+
+function setPageStateValue(key, value) {
+  if (window.TicketPageState && typeof window.TicketPageState.set === "function") {
+    window.TicketPageState.set(key, value);
+    return;
+  }
+  window.__TicketPageStateDraft[key] = value;
+}
 
 window.TicketAppState = window.TicketAppState || {};
 Object.defineProperties(window.TicketAppState, {
-  records: { get: () => records, set: (v) => { records = Array.isArray(v) ? v : []; } },
+  records: { get: () => getPageStateValue("records"), set: (v) => { setPageStateValue("records", Array.isArray(v) ? v : []); } },
   editingId: { get: () => editingId, set: (v) => { editingId = v; } },
   editingUpdatedAt: { get: () => editingUpdatedAt, set: (v) => { editingUpdatedAt = v || ""; } },
   editingUpdatedAtTs: { get: () => editingUpdatedAtTs, set: (v) => { editingUpdatedAtTs = Number(v || 0) || 0; } },
-  nextId: { get: () => nextId, set: (v) => { nextId = Number(v || 1) || 1; } },
+  nextId: { get: () => getPageStateValue("nextId"), set: (v) => { setPageStateValue("nextId", Number(v || 1) || 1); } },
   viewMode: { get: () => viewMode, set: (v) => { viewMode = (v === "trash") ? "trash" : "active"; } },
-  activeYear: { get: () => activeYear, set: (v) => { activeYear = String(v || "").trim(); } },
-  activeMonth: { get: () => activeMonth, set: (v) => { activeMonth = String(v || "").trim(); } },
-  serverTotal: { get: () => serverTotal, set: (v) => { serverTotal = Number(v || 0) || 0; } },
-  metaMonthCounts: { get: () => metaMonthCounts, set: (v) => { metaMonthCounts = v && typeof v === "object" ? v : {}; } },
-  metaTotalAll: { get: () => metaTotalAll, set: (v) => { metaTotalAll = Number(v || 0) || 0; } },
+  activeYear: { get: () => getPageStateValue("activeYear"), set: (v) => { setPageStateValue("activeYear", String(v || "").trim()); } },
+  activeMonth: { get: () => getPageStateValue("activeMonth"), set: (v) => { setPageStateValue("activeMonth", String(v || "").trim()); } },
+  serverTotal: { get: () => getPageStateValue("serverTotal"), set: (v) => { setPageStateValue("serverTotal", Number(v || 0) || 0); } },
+  metaMonthCounts: { get: () => getPageStateValue("metaMonthCounts"), set: (v) => { setPageStateValue("metaMonthCounts", v && typeof v === "object" ? v : {}); } },
+  metaTotalAll: { get: () => getPageStateValue("metaTotalAll"), set: (v) => { setPageStateValue("metaTotalAll", Number(v || 0) || 0); } },
   pageSize: {
-    get: () => pageSize,
+    get: () => getPageStateValue("pageSize"),
     set: (v) => {
       const fallback = (window.TicketConfig && window.TicketConfig.defaults && window.TicketConfig.defaults.pageSize) || 100;
-      pageSize = Number(v || fallback) || fallback;
+      setPageStateValue("pageSize", Number(v || fallback) || fallback);
     }
   },
-  currentPage: { get: () => currentPage, set: (v) => { currentPage = Number(v || 1) || 1; } }
+  currentPage: { get: () => getPageStateValue("currentPage"), set: (v) => { setPageStateValue("currentPage", Number(v || 1) || 1); } }
 });
 
 window.TicketQueryState = window.TicketQueryState || {

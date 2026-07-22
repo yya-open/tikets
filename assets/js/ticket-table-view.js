@@ -402,28 +402,12 @@ function bindPaginationInteractions() {
   });
 }
 
-var activeYear = ""; // 当前选择的年份（字符串，如 "2025"）
-    let activeMonth = ""; // 当前选择的月份（字符串，"01" ~ "12"）
-
-    var typePieChart = null;
-    var monthBarChart = null;
+var typePieChart = null;
+var monthBarChart = null;
 
 
 // ===== 分页配置（每页最多 100 条）=====
 var PAGE_SIZE_MAX = 100;
-var pageSize = 100;     // 可选更小，但上限 100
-var currentPage = 1;
-
-// ===== Keyset 游标分页（用于“上一页/下一页”更快；页码跳转仍走 OFFSET） =====
-var cursorNav = null; // { cursor: string, direction: 'next'|'prev' }
-var cursorKey = "";   // 当前筛选 + viewMode + pageSize
-var pageCursorMap = new Map(); // page -> { next_cursor, prev_cursor }
-var selectedTicketIds = new Set();
-
-// ===== 服务端分页（大数据量） =====
-var serverTotal = 0;          // 当前筛选下的总条数（用于分页 UI）
-var metaMonthCounts = {};     // 用于年份/月份按钮的“全量月份分布”（不受筛选影响，仅区分工单/回收站）
-var metaTotalAll = 0;         // 当前模式（工单/回收站）的总条数（不受筛选影响）
 var lastStatsKey = "";
 var cachedStats = null;
 
@@ -468,7 +452,7 @@ function clamp(num, min, max) {
         if (saved) {
           const data = JSON.parse(saved);
           if (Array.isArray(data)) {
-            records = normalizeRecords(data);
+            window.TicketPageState.setRecords(normalizeRecords(data));
             const maxId = records.reduce((max, r) => {
               const v = Number(r.id);
               return Number.isFinite(v) ? Math.max(max, v) : max;
@@ -542,10 +526,8 @@ function clamp(num, min, max) {
       const sp = new URLSearchParams();
       if (viewMode === "trash") sp.set("trash", "1");
       const j = await window.TicketService.loadMeta(viewMode);
-      metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
-      metaTotalAll = Number(j?.total_all ?? 0) || 0;
-      window.TicketAppState.metaMonthCounts = metaMonthCounts;
-      window.TicketAppState.metaTotalAll = metaTotalAll;
+      window.TicketAppState.metaMonthCounts = (j && j.month_counts) ? j.month_counts : {};
+      window.TicketAppState.metaTotalAll = Number(j?.total_all ?? 0) || 0;
     }
 
     async function loadPageFromServer() {
@@ -559,12 +541,9 @@ function clamp(num, min, max) {
         : await window.TicketService.loadTickets(buildFilters({ includeYearMonth: true }));
 
       const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
-      records = normalizeRecords(arr);
-      serverTotal = Number(j?.total ?? records.length) || 0;
-      window.TicketAppState.records = records;
-      window.TicketAppState.serverTotal = serverTotal;
-      const currentIds = new Set(records.map((r) => Number(r.id)).filter(Number.isFinite));
-      selectedTicketIds = new Set(Array.from(selectedTicketIds).filter((id) => currentIds.has(id)));
+      window.TicketPageState.setRecords(normalizeRecords(arr));
+      window.TicketAppState.serverTotal = Number(j?.total ?? records.length) || 0;
+      window.TicketPageState.pruneSelectionToRecords();
 
       // 兼容后端回传 page/pageSize
       const p = Number(j?.page);
@@ -606,7 +585,7 @@ function clamp(num, min, max) {
         console.warn("loadMetaFromServer failed:", e);
         // meta 失败不阻断主流程
         metaMonthCounts = {};
-        metaTotalAll = 0;
+        window.TicketAppState.metaTotalAll = 0;
       }
 
       refreshYearOptions();
@@ -618,7 +597,7 @@ function clamp(num, min, max) {
     }
 
 function getSelectedRecords() {
-  return (window.TicketAppState.records || []).filter((r) => selectedTicketIds.has(Number(r.id)));
+  return window.TicketPageState.getSelectedRecords();
 }
 
 function syncBatchToolbar() {
@@ -652,12 +631,7 @@ function syncBatchToolbar() {
 }
 
 function toggleSelectAllOnPage(checked) {
-  (window.TicketAppState.records || []).forEach((r) => {
-    const id = Number(r.id);
-    if (!Number.isFinite(id)) return;
-    if (checked) selectedTicketIds.add(id);
-    else selectedTicketIds.delete(id);
-  });
+  window.TicketPageState.toggleSelectAllOnPage(checked);
   const tbody = document.querySelector('#recordTable tbody');
   if (tbody) {
     tbody.querySelectorAll('input.row-select[type="checkbox"]').forEach((input) => {

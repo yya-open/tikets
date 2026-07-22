@@ -143,9 +143,15 @@ test("SQL splitter keeps trigger bodies intact", () => {
 test("main page loads ticket filters before query runtime", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const filtersIndex = html.indexOf("/assets/js/ticket-filters.js");
+  const pageStateIndex = html.indexOf("/assets/js/ticket-page-state.js");
   const runtimeIndex = html.indexOf("/assets/js/ticket-query-runtime.js");
+  const tableViewIndex = html.indexOf("/assets/js/ticket-table-view.js");
   assert.ok(filtersIndex > -1, "ticket-filters.js should be loaded by index.html");
+  assert.ok(pageStateIndex > -1, "ticket-page-state.js should be loaded by index.html");
   assert.ok(runtimeIndex > -1, "ticket-query-runtime.js should be loaded by index.html");
+  assert.ok(tableViewIndex > -1, "ticket-table-view.js should be loaded by index.html");
+  assert.ok(pageStateIndex < runtimeIndex, "page state should be available before query runtime snapshots");
+  assert.ok(pageStateIndex < tableViewIndex, "page state should be available before table view state access");
   assert.ok(filtersIndex < runtimeIndex, "filters should be available before query runtime is used");
   assert.match(html, /id="quickFilterGroup"/);
   assert.match(html, /id="tableDensitySelect"/);
@@ -176,8 +182,9 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   assert.match(tableView, /data-column-reset/);
   assert.match(tableView, /column-required/);
   assert.match(tableView, /input\.disabled = !!col\.required/);
-  assert.match(tableView, /btnBatchExportFilteredExcel/);
-  assert.match(tableView, /exportExcelCurrent/);
+  assert.match(tableView, /window\.TicketPageState\.setRecords/);
+  assert.doesNotMatch(tableView, /var\s+pageCursorMap\s*=\s*new Map\(\)/);
+  assert.doesNotMatch(tableView, /var\s+selectedTicketIds\s*=\s*new Set\(\)/);
 });
 
 test("ticket table column widths target semantic columns", () => {
