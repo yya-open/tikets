@@ -30,6 +30,7 @@
 <script defer src="/assets/js/ticket-fold-state.js"></script>
 <script defer src="/assets/js/ticket-bindings.js"></script>
 <script defer src="/assets/js/ticket-keyboard.js"></script>
+<script defer src="/assets/js/ticket-filter-summary.js"></script>
 <link rel="stylesheet" href="/assets/app.css?v=20260706-column-toggle"/>
 
 </head>
@@ -41,10 +42,6 @@
 <p class="page-eyebrow">工单工作台</p>
 <h1>工单记录系统</h1>
 <p class="page-summary">统一处理工单录入、查询筛选、统计分析与数据导出。</p>
-</div>
-<div class="page-header-meta">
-<span class="page-meta-chip">静态前端</span>
-<span class="page-meta-chip">Cloudflare Pages</span>
 </div>
 </header>
 <nav class="product-nav" aria-label="产品导航">
@@ -217,7 +214,41 @@
 </div>
 </div>
 
-<div class="batch-edit-panel" id="batchEditPanel">
+<div class="filter-summary" id="filterSummary" aria-label="当前筛选摘要" data-empty="1" hidden>
+<span class="filter-summary-label">当前视图</span>
+<div class="filter-summary-chips" id="filterSummaryChips"></div>
+<button type="button" class="filter-summary-clear" id="filterSummaryClear" title="清空全部筛选">清除筛选</button>
+</div>
+
+<div aria-label="月份视图" class="month-panel month-panel-slim">
+<div class="month-nav">
+<label class="month-panel-label" for="yearSelect">时间范围</label>
+<select autocomplete="off" id="yearSelect" name="yearSelect">
+<option value="">全部年份</option>
+</select>
+<div aria-label="月份筛选" class="month-buttons" id="monthButtons"></div>
+</div>
+</div>
+<div class="batch-toolbar" id="batchToolbar">
+<div class="batch-toolbar-left">
+<label class="batch-select-all-wrap"><input type="checkbox" id="selectAllRows" /> 全选本页</label>
+<span class="batch-summary" id="batchSummary">未选择记录</span>
+</div>
+<div class="batch-toolbar-actions" id="batchToolbarActions">
+<div class="batch-action-group" aria-label="导出与恢复">
+<button type="button" class="small secondary" id="btnBatchExportFilteredJson">导出当前筛选 JSON</button>
+<button type="button" class="small secondary" id="btnBatchExportFilteredExcel">导出当前筛选 Excel</button>
+<button type="button" class="small secondary" id="btnBatchExportJson">导出选中 JSON</button>
+<button type="button" class="small secondary" id="btnBatchExportExcel">导出选中 Excel</button>
+<button type="button" class="small" id="btnBatchRestore">批量恢复</button>
+</div>
+<div class="batch-action-group batch-action-group-danger" aria-label="危险操作">
+<button type="button" class="small danger" id="btnBatchDelete">批量删除</button>
+<button type="button" class="small danger" id="btnBatchHardDelete">批量彻底删除</button>
+</div>
+</div>
+</div>
+<div class="batch-edit-panel" id="batchEditPanel" aria-label="批量更新">
 <div class="batch-edit-title">批量更新</div>
 <label for="batchStatusSelect">状态</label>
 <select id="batchStatusSelect" name="batchStatusSelect">
@@ -230,39 +261,6 @@
 <label for="batchAssigneeInput">负责人</label>
 <input id="batchAssigneeInput" name="batchAssigneeInput" autocomplete="off" placeholder="不修改" type="text"/>
 <button type="button" class="secondary" id="btnBatchApplyWorkflow">应用到选中</button>
-</div>
-
-<div aria-label="月份视图" class="month-panel">
-<div class="month-panel-head">
-<div>
-<div class="month-panel-title">月份视图</div>
-<div class="month-panel-desc">快速切换年份和月份，聚焦当前周期内的工单处理情况。</div>
-</div>
-</div>
-<div class="month-nav">
-<div>
-<label for="yearSelect">年份：</label>
-<select autocomplete="off" id="yearSelect" name="yearSelect">
-<option value="">全部年份</option>
-</select>
-</div>
-<div aria-label="月份筛选" class="month-buttons" id="monthButtons"></div>
-</div>
-</div>
-<div class="batch-toolbar" id="batchToolbar">
-<div class="batch-toolbar-left">
-<label class="batch-select-all-wrap"><input type="checkbox" id="selectAllRows" /> 全选本页</label>
-<span class="batch-summary" id="batchSummary">未选择记录</span>
-</div>
-<div class="batch-toolbar-actions" id="batchToolbarActions">
-<button type="button" class="small secondary" id="btnBatchExportFilteredJson">导出当前筛选 JSON</button>
-<button type="button" class="small secondary" id="btnBatchExportFilteredExcel">导出当前筛选 Excel</button>
-<button type="button" class="small secondary" id="btnBatchExportJson">导出选中 JSON</button>
-<button type="button" class="small secondary" id="btnBatchExportExcel">导出选中 Excel</button>
-<button type="button" class="small" id="btnBatchRestore">批量恢复</button>
-<button type="button" class="small danger" id="btnBatchDelete">批量删除</button>
-<button type="button" class="small danger" id="btnBatchHardDelete">批量彻底删除</button>
-</div>
 </div>
 <div class="table-wrap" id="tableWrap">
 <table id="recordTable">
@@ -283,60 +281,9 @@
 <th data-column="actions">操作</th>
 </tr>
 </thead>
-<!-- tbody 初始为骨架屏行，JS 渲染时自动替换 -->
+<!-- tbody 初始占位：一条 shimmer 行撑满整表，JS 首次渲染时被 innerHTML 清空 -->
 <tbody class="is-loading" aria-label="数据加载中">
-<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w65">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
-<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w70">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
-<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
-<tr class="skeleton-row"><td class="sel-cell"><span class="skeleton skeleton-checkbox">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w90">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w65">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w45">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w55">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w35">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w30">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w50">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w40">&nbsp;</span></td>
-<td><span class="skeleton skeleton-w60px">&nbsp;</span></td></tr>
+<tr class="skeleton-row skeleton-row-span"><td colspan="13"><span class="skeleton skeleton-bar">&nbsp;</span></td></tr>
 </tbody>
 </table>
 </div>

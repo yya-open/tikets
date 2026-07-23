@@ -2826,23 +2826,16 @@ tr:hover td {
   height: 16px;
   border-radius: 3px;
 }
-.skeleton-w10 { width: 10%; }
-.skeleton-w15 { width: 15%; }
-.skeleton-w20 { width: 20%; }
-.skeleton-w25 { width: 25%; }
-.skeleton-w30 { width: 30%; }
-.skeleton-w35 { width: 35%; }
-.skeleton-w40 { width: 40%; }
-.skeleton-w45 { width: 45%; }
-.skeleton-w50 { width: 50%; }
-.skeleton-w55 { width: 55%; }
-.skeleton-w60 { width: 60%; }
-.skeleton-w65 { width: 65%; }
-.skeleton-w70 { width: 70%; }
-.skeleton-w80 { width: 80%; }
-.skeleton-w90 { width: 90%; }
-.skeleton-w100 { width: 100%; }
-.skeleton-w60px { width: 60px; }
+/* 单行占位：横跨全表的 shimmer 条 */
+.skeleton-row-span td {
+  padding: 12px 8px;
+}
+.skeleton-bar {
+  display: block;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+}
 
 /* 骨架屏：统计卡片 */
 .skeleton-stat {
@@ -2860,4 +2853,236 @@ tr:hover td {
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
   border-radius: 8px;
   min-height: 200px;
+}
+
+/* ===== 批量操作分组：把危险动作与常规动作视觉隔离 =====
+ * 结构:
+ *   .batch-toolbar-actions
+ *     ├─ .batch-action-group           普通操作（导出 / 恢复）
+ *     └─ .batch-action-group-danger    危险操作（删除 / 彻底删除）
+ */
+.batch-action-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+}
+
+.batch-action-group-danger {
+  padding: 4px 8px;
+  margin-left: auto;
+  border-color: #f4c9cc;
+  background: #fff5f5;
+}
+
+.batch-action-group-danger::before {
+  content: "危险操作";
+  margin-right: 2px;
+  color: #9a1c26;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.batch-toolbar-actions {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+/* 让筛选状态摘要在有选中或有条件时更抢眼一些 */
+.batch-summary {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: #253247;
+  background: #f2f5f9;
+}
+
+@media (max-width: 720px) {
+  .batch-action-group-danger {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ===== 当前筛选摘要条：告诉用户"你现在看到的是哪一批数据" =====
+ * 由 ticket-filter-summary.js 在渲染完成后被动填充；
+ * 结构:
+ *   .filter-summary
+ *     ├─ .filter-summary-label           固定前缀"当前视图"
+ *     ├─ .filter-summary-chips           N 个 .filter-chip（键: 值）
+ *     └─ .filter-summary-clear           复用现有 #btnClearFilters 的语义
+ *
+ * data-empty="1" 时整个条隐藏，避免"空态摘要"占位。
+ */
+.filter-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.filter-summary[data-empty="1"] {
+  display: none;
+}
+
+.filter-summary-label {
+  color: #40516a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.filter-summary-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid #cfdaea;
+  border-radius: 999px;
+  background: #fff;
+  color: #253247;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip-key {
+  color: #667085;
+  font-weight: 700;
+}
+
+.filter-chip-value {
+  color: #172033;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip-trash {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.filter-chip-trash .filter-chip-key,
+.filter-chip-trash .filter-chip-value {
+  color: #be123c;
+}
+
+.filter-summary-clear {
+  min-height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: #253247;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.filter-summary-clear:hover {
+  background: var(--surface-muted);
+}
+
+@media (max-width: 720px) {
+  .filter-summary-clear {
+    width: 100%;
+  }
+}
+
+/* ===== 批量操作条与批量编辑面板的合并视觉 =====
+ * 目的：让"选中行 → 立即操作"聚成同一个视觉容器，避免视线跨过 month-panel 之类的中间块。
+ *
+ * 结构：
+ *   .batch-toolbar             上沿：全选 + 汇总 + 导出/删除按钮
+ *   .batch-edit-panel          下沿：状态/负责人 + 应用到选中（选中记录时才由 JS 显示）
+ *
+ * 采用"相邻兄弟选择器"合并，不改 JS 显隐逻辑：
+ *   - 未选中 → batch-edit-panel display:none → batch-toolbar 保持默认圆角
+ *   - 已选中 → batch-edit-panel 显示，触发下面的合并样式（去掉相接边缘的圆角与边框）
+ */
+.batch-toolbar:has(+ .batch-edit-panel:not([style*="display: none"])) {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.batch-toolbar + .batch-edit-panel {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: 1px dashed #dce4ee;
+  background: #fbfcfe;
+}
+
+/* :has 兼容性兜底：不支持 :has 的浏览器仍能通过下沿虚线看出归属 */
+@supports not selector(:has(*)) {
+  .batch-toolbar + .batch-edit-panel {
+    margin-top: -1px;
+  }
+}
+
+/* ===== 月份视图·紧凑窄条 =====
+ * 目的：去掉独立标题/描述壳，把\"年份 + 月份按钮\"降级为一行控件，
+ * 视觉密度对齐 .filter-summary，让\"时间维度筛选\"和\"当前视图\"处于同一层级。
+ *
+ * 单一职责：只覆盖 .month-panel-slim 语义变体，不影响可能的其他 .month-panel 用法。
+ */
+.month-panel.month-panel-slim {
+  padding: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.month-panel.month-panel-slim .month-nav {
+  margin-top: 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.month-panel.month-panel-slim .month-panel-label {
+  color: #40516a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.month-panel.month-panel-slim #yearSelect {
+  width: auto;
+  min-height: 30px;
+  min-width: 120px;
+}
+
+.month-panel.month-panel-slim .month-buttons {
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
