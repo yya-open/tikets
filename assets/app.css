@@ -2927,7 +2927,7 @@ tr:hover td {
   margin: 0 0 12px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--primary);
+  border-left: 4px solid var(--primary);
   border-radius: var(--radius);
   background: var(--surface-soft);
 }
