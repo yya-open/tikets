@@ -3086,3 +3086,23 @@ tr:hover td {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ---- utility / shared ---- */
+
+.hidden {
+  display: none !important;
+}
+
+.log-pre {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

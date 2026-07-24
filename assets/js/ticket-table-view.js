@@ -143,26 +143,6 @@ var monthBarChart = null;
     }
 
 
-    // ⭐ 本地存储：从 localStorage 恢复 records
-    function loadFromLocal() {
-      try {
-        const saved = localStorage.getItem("ticket_records");
-        if (saved) {
-          const data = JSON.parse(saved);
-          if (Array.isArray(data)) {
-            window.TicketPageState.setRecords(normalizeRecords(data));
-            const maxId = records.reduce((max, r) => {
-              const v = Number(r.id);
-              return Number.isFinite(v) ? Math.max(max, v) : max;
-            }, 0);
-            nextId = maxId + 1;
-          }
-        }
-      } catch (e) {
-        console.error("从本地恢复数据失败：", e);
-      }
-    }
-
     // ===== 云端存储（Cloudflare Pages Functions + D1，服务端分页/筛选）=====
     // deleteRecord / restoreRecord / hardDeleteRecord 已迁至 ticket-record-actions.js
 
@@ -239,7 +219,6 @@ async function renderTable({ resetPage = true } = {}) {
       const row = tbody.insertRow();
       row.dataset.ticketId = String(r.id);
       row.title = '双击查看详情';
-      row.style.cursor = 'pointer';
       const selectCell = row.insertCell(0);
       selectCell.className = 'sel-cell';
       const checkbox = document.createElement('input');

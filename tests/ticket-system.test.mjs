@@ -208,7 +208,7 @@ test("ticket table columns can be hidden with sensible defaults", () => {
   assert.match(workbench, /data-column-reset/);
   assert.match(workbench, /column-required/);
   assert.match(workbench, /input\.disabled = !!col\.required/);
-  assert.match(tableView, /window\.TicketPageState\.setRecords/);
+  assert.match(queryController, /window\.TicketPageState\.setRecords/);
   assert.doesNotMatch(tableView, /function buildFilters\(/);
   assert.doesNotMatch(tableView, /function loadPageFromServer\(/);
   assert.doesNotMatch(tableView, /const TABLE_COLUMNS = \[/);

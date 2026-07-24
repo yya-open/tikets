@@ -33,15 +33,7 @@ function showModalPre({ title = "提示", text = "", okText = "关闭", copyText
   bodyEl.innerHTML = "";
 
   const pre = document.createElement("pre");
-  pre.style.maxHeight = "55vh";
-  pre.style.overflow = "auto";
-  pre.style.margin = "0";
-  pre.style.padding = "12px";
-  pre.style.border = "1px solid #eee";
-  pre.style.borderRadius = "12px";
-  pre.style.background = "#fafafa";
-  pre.style.fontSize = "12px";
-  pre.style.lineHeight = "1.5";
+  pre.className = "log-pre";
   pre.textContent = text;
   bodyEl.appendChild(pre);
 
@@ -168,15 +160,7 @@ function showModalDetails({ title="详情", summaryTitle="摘要", summaryItems=
   details.appendChild(sum);
 
   const pre = document.createElement("pre");
-  pre.style.maxHeight = "45vh";
-  pre.style.overflow = "auto";
-  pre.style.margin = "10px 0 0 0";
-  pre.style.padding = "12px";
-  pre.style.border = "1px solid #eee";
-  pre.style.borderRadius = "12px";
-  pre.style.background = "#fafafa";
-  pre.style.fontSize = "12px";
-  pre.style.lineHeight = "1.5";
+  pre.className = "log-pre";
   pre.textContent = jsonText || "";
   details.appendChild(pre);
 

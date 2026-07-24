@@ -1,11 +1,4 @@
 (function () {
-  function freshGetOptions(options = {}) {
-    const headers = new Headers(options.headers || {});
-    headers.set('Cache-Control', 'no-cache');
-    headers.set('Pragma', 'no-cache');
-    return { ...options, cache: 'no-store', headers };
-  }
-
   async function buildHttpError(res, action) {
     const err = new Error(`${action} failed: ${res ? res.status : "no_response"}`);
     err.status = res && res.status;
@@ -27,21 +20,21 @@
   async function loadMeta(viewMode) {
     const sp = new URLSearchParams();
     if (viewMode === 'trash') sp.set('trash', '1');
-    const res = await fetch(`/api/stats?${sp.toString()}`, freshGetOptions());
+    const res = await fetch(`/api/stats?${sp.toString()}`);
     await ensureOk(res, 'meta stats');
     return await res.json();
   }
 
   async function loadTickets(searchParams) {
     const query = searchParams instanceof URLSearchParams ? searchParams.toString() : String(searchParams || '');
-    const res = await window.TicketApi.authedFetch(`/api/tickets?${query}`, freshGetOptions());
+    const res = await window.TicketApi.authedFetch(`/api/tickets?${query}`);
     await ensureOk(res, 'load tickets');
     return await res.json();
   }
 
   async function loadStats(searchParams) {
     const query = searchParams instanceof URLSearchParams ? searchParams.toString() : String(searchParams || '');
-    const res = await fetch(`/api/stats?${query}`, freshGetOptions());
+    const res = await fetch(`/api/stats?${query}`);
     await ensureOk(res, 'load stats');
     return await res.json();
   }
@@ -49,7 +42,7 @@
   async function loadTicketTypes({ includeDisabled = false } = {}) {
     const sp = new URLSearchParams();
     if (includeDisabled) sp.set('includeDisabled', '1');
-    const res = await fetch(`/api/dictionaries/types?${sp.toString()}`, freshGetOptions());
+    const res = await fetch(`/api/dictionaries/types?${sp.toString()}`);
     await ensureOk(res, 'load ticket types');
     return await res.json();
   }

@@ -19,6 +19,14 @@ function isFtsUnavailable(error) {
   );
 }
 
+function isLegacySchema(error) {
+  const message = String(error?.message || error);
+  return (
+    message.includes("no such column") ||
+    message.includes("no such table: tickets")
+  );
+}
+
 function buildCurrentSchemaPlan(options, { useFts }) {
   const { cursor, direction, page, pageSize, deleted, from, to, type, department, name, ticketStatus, assignee, priority, quick, quickDate, q } = options;
   const where = [];
@@ -129,6 +137,9 @@ export async function listTickets(db, options) {
     if (isFtsUnavailable(error)) {
       return await executePlan(db, buildCurrentSchemaPlan(options, { useFts: false }));
     }
-    return await executePlan(db, buildLegacySchemaPlan(options));
+    if (isLegacySchema(error)) {
+      return await executePlan(db, buildLegacySchemaPlan(options));
+    }
+    throw error;
   }
 }

@@ -39,11 +39,11 @@ function syncBatchToolbar() {
   const btnDelete = document.getElementById('btnBatchDelete');
   const btnRestore = document.getElementById('btnBatchRestore');
   const btnHardDelete = document.getElementById('btnBatchHardDelete');
-  if (btnDelete) btnDelete.style.display = mode === 'trash' ? 'none' : '';
-  if (btnRestore) btnRestore.style.display = mode === 'trash' ? '' : 'none';
-  if (btnHardDelete) btnHardDelete.style.display = mode === 'trash' ? '' : 'none';
+  if (btnDelete) btnDelete.classList.toggle('hidden', mode === 'trash');
+  if (btnRestore) btnRestore.classList.toggle('hidden', mode !== 'trash');
+  if (btnHardDelete) btnHardDelete.classList.toggle('hidden', mode !== 'trash');
   const batchEditPanel = document.getElementById('batchEditPanel');
-  if (batchEditPanel) batchEditPanel.style.display = selectedOnPage > 0 ? '' : 'none';
+  if (batchEditPanel) batchEditPanel.classList.toggle('hidden', selectedOnPage === 0);
 }
 
 function toggleSelectAllOnPage(checked) {
